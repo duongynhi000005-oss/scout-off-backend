@@ -256,6 +256,12 @@ env:
   SSE_KEEPALIVE_INTERVAL_MS: "15000"
   # Maximum concurrent SSE connections (0 = unlimited)
   SSE_MAX_CONNECTIONS: "0"
+  # Maximum concurrent SSE connections per authenticated wallet (0 = unlimited)
+  SSE_MAX_CONNECTIONS_PER_WALLET: "5"
+  # Interval for shared SSE auth sweep in ms
+  SSE_AUTH_SWEEP_INTERVAL_MS: "30000"
+  # Base retry interval in ms for SSE reconnect hints
+  SSE_RETRY_MS: "5000"
   # Request timeout in ms
   REQUEST_TIMEOUT_MS: "30000"
   # Rate limiting

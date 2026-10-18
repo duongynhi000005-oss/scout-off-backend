@@ -361,6 +361,11 @@ describe('parseNumericEnv validation', () => {
     'EVIDENCE_MAX_BYTES',
     'ADMIN_ACTION_TTL_MS',
     'COMPRESSION_THRESHOLD',
+    'SSE_KEEPALIVE_INTERVAL_MS',
+    'SSE_AUTH_SWEEP_INTERVAL_MS',
+    'SSE_MAX_CONNECTIONS',
+    'SSE_MAX_CONNECTIONS_PER_WALLET',
+    'SSE_RETRY_MS',
   ];
 
   beforeEach(() => {
@@ -648,5 +653,43 @@ describe('parseNumericEnv validation', () => {
     const cfg = await loadConfig();
     expect(cfg.compressionThresholdBytes).toBe(512);
     delete process.env.COMPRESSION_THRESHOLD_BYTES;
+  });
+
+  // ── SSE_* ────────────────────────────────────────────────────────────────────
+
+  it('populates config.sse from env', async () => {
+    process.env.SSE_KEEPALIVE_INTERVAL_MS = '20000';
+    process.env.SSE_AUTH_SWEEP_INTERVAL_MS = '45000';
+    process.env.SSE_MAX_CONNECTIONS = '100';
+    process.env.SSE_MAX_CONNECTIONS_PER_WALLET = '3';
+    process.env.SSE_RETRY_MS = '3000';
+    const cfg = await loadConfig();
+    expect(cfg.sse).toEqual({
+      keepaliveIntervalMs: 20000,
+      authSweepIntervalMs: 45000,
+      maxConnections: 100,
+      maxConnectionsPerWallet: 3,
+      retryMs: 3000,
+    });
+  });
+
+  it('SSE_KEEPALIVE_INTERVAL_MS: 500 is below min (1000) and throws', async () => {
+    process.env.SSE_KEEPALIVE_INTERVAL_MS = '500';
+    await expectThrowsContaining('SSE_KEEPALIVE_INTERVAL_MS');
+  });
+
+  it('SSE_KEEPALIVE_INTERVAL_MS: 200000 exceeds max (120000) and throws', async () => {
+    process.env.SSE_KEEPALIVE_INTERVAL_MS = '200000';
+    await expectThrowsContaining('SSE_KEEPALIVE_INTERVAL_MS');
+  });
+
+  it('SSE_AUTH_SWEEP_INTERVAL_MS: 500 is below min (1000) and throws', async () => {
+    process.env.SSE_AUTH_SWEEP_INTERVAL_MS = '500';
+    await expectThrowsContaining('SSE_AUTH_SWEEP_INTERVAL_MS');
+  });
+
+  it('SSE_RETRY_MS: 0 is below min (1) and throws', async () => {
+    process.env.SSE_RETRY_MS = '0';
+    await expectThrowsContaining('SSE_RETRY_MS');
   });
 });

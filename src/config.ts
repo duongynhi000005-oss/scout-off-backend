@@ -727,11 +727,15 @@ const config = {
   // ── Server-Sent Events (SSE) ──────────────────────────────────────────
   sse: {
     /** Interval between keep-alive pings sent to SSE clients (ms). */
-    keepaliveIntervalMs: parseNumericEnv('SSE_KEEPALIVE_INTERVAL_MS', process.env.SSE_KEEPALIVE_INTERVAL_MS, 15000, { min: 1, integer: true }),
+    keepaliveIntervalMs: parseNumericEnv('SSE_KEEPALIVE_INTERVAL_MS', process.env.SSE_KEEPALIVE_INTERVAL_MS, 15000, { min: 1000, max: 120000, integer: true }),
     /** Max concurrent SSE connections (0 = unlimited). */
     maxConnections: parseNumericEnv('SSE_MAX_CONNECTIONS', process.env.SSE_MAX_CONNECTIONS, 0, { min: 0, integer: true }),
+    /** Max concurrent SSE connections per authenticated wallet (0 = unlimited). */
+    maxConnectionsPerWallet: parseNumericEnv('SSE_MAX_CONNECTIONS_PER_WALLET', process.env.SSE_MAX_CONNECTIONS_PER_WALLET, 5, { min: 0, integer: true }),
     /** Interval for shared SSE auth sweep (re-check revocations, blocklists). */
-    authSweepIntervalMs: parseNumericEnv('SSE_AUTH_SWEEP_INTERVAL_MS', process.env.SSE_AUTH_SWEEP_INTERVAL_MS, 30000, { min: 1, integer: true }),
+    authSweepIntervalMs: parseNumericEnv('SSE_AUTH_SWEEP_INTERVAL_MS', process.env.SSE_AUTH_SWEEP_INTERVAL_MS, 30000, { min: 1000, integer: true }),
+    /** Base retry interval in milliseconds for SSE reconnect hints (default: 5000 ms). */
+    retryMs: parseNumericEnv('SSE_RETRY_MS', process.env.SSE_RETRY_MS, 5000, { min: 1, integer: true }),
   },
 
   // ── Wallet / cache settings ───────────────────────────────────────────

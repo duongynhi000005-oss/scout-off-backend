@@ -50,12 +50,12 @@ async function waitForSubscriberCount(count: number): Promise<void> {
 }
 
 const openRequests: Array<{ abort: () => void }> = [];
-let originalGlobalLimit: string | undefined;
-let originalWalletLimit: string | undefined;
+let originalGlobalLimit: number;
+let originalWalletLimit: number;
 
 beforeEach(() => {
-  originalGlobalLimit = process.env.SSE_MAX_CONNECTIONS;
-  originalWalletLimit = process.env.SSE_MAX_CONNECTIONS_PER_WALLET;
+  originalGlobalLimit = config.sse.maxConnections;
+  originalWalletLimit = config.sse.maxConnectionsPerWallet;
 });
 
 function openStream(wallet: string): { abort: () => void } {
@@ -70,16 +70,14 @@ function openStream(wallet: string): { abort: () => void } {
 afterEach(async () => {
   for (const stream of openRequests.splice(0)) stream.abort();
   await waitForSubscriberCount(0);
-  if (originalGlobalLimit === undefined) delete process.env.SSE_MAX_CONNECTIONS;
-  else process.env.SSE_MAX_CONNECTIONS = originalGlobalLimit;
-  if (originalWalletLimit === undefined) delete process.env.SSE_MAX_CONNECTIONS_PER_WALLET;
-  else process.env.SSE_MAX_CONNECTIONS_PER_WALLET = originalWalletLimit;
+  config.sse.maxConnections = originalGlobalLimit;
+  config.sse.maxConnectionsPerWallet = originalWalletLimit;
 });
 
 describe('GET /api/events/stream session limits', () => {
   it('caps streams per wallet without blocking other wallets', async () => {
-    process.env.SSE_MAX_CONNECTIONS = '0';
-    process.env.SSE_MAX_CONNECTIONS_PER_WALLET = '1';
+    config.sse.maxConnections = 0;
+    config.sse.maxConnectionsPerWallet = 1;
 
     const firstWalletStream = openStream(WALLET_A);
     await waitForSubscriberCount(1);

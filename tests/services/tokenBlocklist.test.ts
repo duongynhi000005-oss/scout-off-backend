@@ -227,3 +227,82 @@ describe('tokenBlocklist — Redis-down failover', () => {
     unloadRedisDown();
   });
 });
+
+describe('tokenBlocklist — pipelined Redis warm-up (#1592)', () => {
+  afterEach(() => {
+    jest.dontMock('ioredis');
+    jest.dontMock('../../src/config');
+    jest.resetModules();
+  });
+
+  it('warms 1,200 revoked tokens into Redis across 3 pipeline batches of 500', async () => {
+    jest.resetModules();
+
+    const store = new Map<string, { value: string; ttl: number }>();
+    const pipelineExecSpy = jest.fn();
+    const pipelineSpy = jest.fn(() => {
+      const ops: Array<() => [Error | null, string]> = [];
+      const pipe = {
+        setex: jest.fn((key: string, ttl: number, val: string) => {
+          ops.push(() => {
+            store.set(key, { value: val, ttl });
+            return [null, 'OK'];
+          });
+          return pipe;
+        }),
+        exec: jest.fn(async () => {
+          pipelineExecSpy();
+          return ops.map((fn) => fn());
+        }),
+      };
+      return pipe;
+    });
+
+    jest.doMock('ioredis', () => {
+      return jest.fn().mockImplementation(() => ({
+        on: jest.fn(),
+        setex: jest.fn(async (key: string, ttl: number, val: string) => {
+          store.set(key, { value: val, ttl });
+          return 'OK';
+        }),
+        exists: jest.fn(async (key: string) => (store.has(key) ? 1 : 0)),
+        keys: jest.fn(async () => Array.from(store.keys())),
+        pipeline: pipelineSpy,
+      }));
+    });
+    jest.doMock('../../src/config', () => ({
+      __esModule: true,
+      default: { ...jest.requireActual('../../src/config').default, redisUrl: 'redis://fake:6379' },
+    }));
+
+    const freshDb = require('../../src/db') as typeof import('../../src/db');
+    await freshDb.initDb();
+    const driver = freshDb.getDriver();
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    for (let i = 0; i < 1200; i++) {
+      await driver.run(
+        'INSERT INTO revoked_tokens (jti, revoked_at, expires_at) VALUES (?, ?, ?)',
+        [`batch-jti-${i}`, nowSec, nowSec + 3600],
+      );
+    }
+    // Also insert an already-expired row to ensure it is skipped
+    await driver.run(
+      'INSERT INTO revoked_tokens (jti, revoked_at, expires_at) VALUES (?, ?, ?)',
+      ['batch-jti-expired', nowSec - 100, nowSec - 10],
+    );
+
+    const freshTokenBlocklist =
+      require('../../src/services/tokenBlocklist') as typeof import('../../src/services/tokenBlocklist');
+
+    await freshTokenBlocklist.syncDbToRedis();
+
+    expect(pipelineSpy).toHaveBeenCalledTimes(3);
+    expect(pipelineExecSpy).toHaveBeenCalledTimes(3);
+    expect(store.size).toBe(1200);
+    expect(store.has('jti:revoked:batch-jti-0')).toBe(true);
+    expect(store.has('jti:revoked:batch-jti-1199')).toBe(true);
+    expect(store.has('jti:revoked:batch-jti-expired')).toBe(false);
+    expect(await freshTokenBlocklist.isTokenRevoked('batch-jti-500')).toBe(true);
+  });
+});

@@ -36,7 +36,7 @@ const REVOKED_EVENT = 'token_revoked';
 // ─── Redis client (optional) ──────────────────────────────────────────────────
 
 /** Narrow surface we need from ioredis — same pattern as redisCacheStore.ts */
-type RedisLike = Pick<Redis, 'setex' | 'exists' | 'keys' | 'set'>;
+type RedisLike = Pick<Redis, 'setex' | 'exists' | 'keys' | 'set' | 'pipeline'>;
 
 const redisClient: RedisLike | null = getRedisClient();
 
@@ -136,14 +136,17 @@ async function checkDb(jti: string): Promise<boolean> {
 
 // ─── Startup sync ─────────────────────────────────────────────────────────────
 
+const SYNC_BATCH_SIZE = 500;
+
 /**
  * Load all non-expired DB revocations into Redis to warm the cache after a
  * restart.  Called once from initBlocklist() which is invoked at server start.
  *
+ * Uses Redis pipelines in batches of 500 to avoid one round trip per jti.
  * Runs asynchronously — the server does NOT wait for it to finish before
  * accepting requests (Redis is a cache; the DB fallback handles the gap).
  */
-async function syncDbToRedis(): Promise<void> {
+export async function syncDbToRedis(): Promise<void> {
   if (!redisClient) return;
 
   const now = Math.floor(Date.now() / 1000);
@@ -161,9 +164,36 @@ async function syncDbToRedis(): Promise<void> {
   }
 
   let loaded = 0;
-  for (const row of rows) {
-    const ok = await writeToRedis(row.jti, row.expires_at);
-    if (ok) loaded++;
+  for (let i = 0; i < rows.length; i += SYNC_BATCH_SIZE) {
+    const chunk = rows.slice(i, i + SYNC_BATCH_SIZE);
+    const nowSec = Math.floor(Date.now() / 1000);
+
+    if (typeof redisClient.pipeline === 'function') {
+      const p = redisClient.pipeline();
+      let queued = 0;
+      for (const r of chunk) {
+        const ttl = r.expires_at - nowSec;
+        if (ttl > 0) {
+          p.setex(redisKey(r.jti), ttl, '1');
+          queued++;
+        }
+      }
+      if (queued > 0) {
+        try {
+          const results = await p.exec();
+          if (Array.isArray(results)) {
+            loaded += results.filter(([err]) => !err).length;
+          }
+        } catch (err) {
+          logger.warn('[tokenBlocklist] Redis pipeline write failed:', err);
+        }
+      }
+    } else {
+      for (const r of chunk) {
+        const ok = await writeToRedis(r.jti, r.expires_at);
+        if (ok) loaded++;
+      }
+    }
   }
 
   logger.info(`[tokenBlocklist] Startup sync: loaded ${loaded}/${rows.length} revocations into Redis`);

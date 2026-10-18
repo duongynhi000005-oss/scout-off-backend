@@ -215,11 +215,14 @@ describe.each(READINESS_PATHS)('%s', (path) => {
     expect(res.body.services).toHaveProperty('stellar');
   });
 
-  it('includes indexer field in the services object', async () => {
+  it('includes indexer field in the services object with lag and maxLag instead of ms (#1575)', async () => {
     mockCheckHealth.mockResolvedValueOnce(undefined);
     const res = await request(app).get(path);
     expect(res.body.services).toHaveProperty('indexer');
     expect(['ok', 'unavailable', 'disabled']).toContain(probeStatus(res.body.services.indexer));
+    expect(res.body.services.indexer.ms).toBeUndefined();
+    expect(res.body.services.indexer.lag).toBe(0);
+    expect(res.body.services.indexer.maxLag).toBe(config.readinessMaxLag);
   });
 
   it('returns 503 with indexer:unavailable when indexer lag exceeds threshold', async () => {
@@ -230,6 +233,9 @@ describe.each(READINESS_PATHS)('%s', (path) => {
     expect(res.status).toBe(503);
     expect(res.body.status).toBe('degraded');
     expect(probeStatus(res.body.services.indexer)).toBe('unavailable');
+    expect(res.body.services.indexer.ms).toBeUndefined();
+    expect(res.body.services.indexer.lag).toBe(150);
+    expect(res.body.services.indexer.maxLag).toBe(config.readinessMaxLag);
   });
 
   it('returns 200 with indexer:ok when indexer lag is within threshold', async () => {
@@ -240,6 +246,9 @@ describe.each(READINESS_PATHS)('%s', (path) => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ok');
     expect(probeStatus(res.body.services.indexer)).toBe('ok');
+    expect(res.body.services.indexer.ms).toBeUndefined();
+    expect(res.body.services.indexer.lag).toBe(50);
+    expect(res.body.services.indexer.maxLag).toBe(config.readinessMaxLag);
   });
 
   it('returns 200 with indexer:ok when indexer lag is exactly at threshold', async () => {
@@ -250,6 +259,9 @@ describe.each(READINESS_PATHS)('%s', (path) => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ok');
     expect(probeStatus(res.body.services.indexer)).toBe('ok');
+    expect(res.body.services.indexer.ms).toBeUndefined();
+    expect(res.body.services.indexer.lag).toBe(100);
+    expect(res.body.services.indexer.maxLag).toBe(config.readinessMaxLag);
   });
 
 

@@ -303,7 +303,12 @@ function getReadinessTimeouts(): { db: number; ipfs: number; stellar: number } {
 
 export interface ProbeResult {
   status: 'ok' | 'unavailable' | 'disabled';
-  ms: number;
+  /** Wall-clock latency in milliseconds (omitted for in-memory checks like indexer). */
+  ms?: number;
+  /** Current ledger lag (present on the indexer probe). */
+  lag?: number;
+  /** Configured maximum allowable ledger lag (present on the indexer probe). */
+  maxLag?: number;
 }
 
 async function checkReadiness(): Promise<Record<string, ProbeResult>> {
@@ -355,7 +360,7 @@ async function checkReadiness(): Promise<Record<string, ProbeResult>> {
       if (uptimeMs < config.readinessGracePeriodMs) return 'ok';
       
       // After grace period, check if lag is within threshold
-      return indexerLedgerLag <= config.readinessMaxLag ? 'ok' : 'unavailable';
+      return (indexerLedgerLag ?? 0) <= config.readinessMaxLag ? 'ok' : 'unavailable';
     })(),
   ]);
 
@@ -363,7 +368,11 @@ async function checkReadiness(): Promise<Record<string, ProbeResult>> {
     db: dbResult,
     ipfs: ipfsResult,
     stellar: stellarResult,
-    indexer: { status: indexerResult, ms: 0 },
+    indexer: {
+      status: indexerResult,
+      lag: indexerLedgerLag ?? 0,
+      maxLag: config.readinessMaxLag,
+    },
   };
 
   return services;

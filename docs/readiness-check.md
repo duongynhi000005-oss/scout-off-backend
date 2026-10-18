@@ -19,6 +19,14 @@ The readiness check reports the indexer service status based on:
 - **Normal Operation**: After the grace period, the indexer reports:
   - `ok` if `indexerLedgerLag <= READINESS_MAX_LAG`
   - `unavailable` if `indexerLedgerLag > READINESS_MAX_LAG`
+- **Response Fields**: Unlike the I/O-bound probes (`db`, `ipfs`, `stellar`), which report wall-clock duration in `ms`, the in-memory `indexer` entry omits `ms` and instead includes `lag` (current `indexerLedgerLag`) and `maxLag` (`config.readinessMaxLag`):
+  ```json
+  "indexer": {
+    "status": "ok",
+    "lag": 12,
+    "maxLag": 100
+  }
+  ```
 
 ## Configuration
 

@@ -7,6 +7,7 @@ import {
   PROMETHEUS_CONTENT_TYPE,
   LATENCY_BUCKETS_MS,
 } from '../../src/middleware/metrics';
+import { rateLimit, playerRateLimit, RateLimitStore } from '../../src/middleware/rateLimit';
 
 // Build a minimal app that mounts only the metrics middleware and the /metrics
 // handler. This deliberately avoids importing the full app so the endpoint's
@@ -98,4 +99,51 @@ describe('GET /metrics — Prometheus exposition', () => {
     expect(body).toMatch(/http_errors_total\{range="4xx"\} 0/);
     expect(body).toMatch(/http_request_duration_ms_count 0/);
   });
+
+  it('increments scout_off_rate_limit_rejected_total labelled by limiter name and scout_off_rate_limit_store_errors_total on store errors', async () => {
+    const app = buildApp();
+    app.get('/limited', rateLimit({ max: 1, windowMs: 60000, name: 'test' }), (_req, res) => {
+      res.json({ ok: true });
+    });
+    app.get(
+      '/player-limited',
+      (req, _res, next) => {
+        req.body = { playerId: 'p1' };
+        next();
+      },
+      playerRateLimit({ max: 1, windowMs: 60000 }),
+      (_req, res) => {
+        res.json({ ok: true });
+      }
+    );
+    const failingStore: RateLimitStore = {
+      async increment() {
+        throw new Error('redis down');
+      },
+      async reset() {},
+    };
+    app.get(
+      '/store-fail',
+      rateLimit({ max: 1, windowMs: 60000, name: 'failing', store: failingStore }),
+      (_req, res) => {
+        res.json({ ok: true });
+      }
+    );
+
+    expect((await request(app).get('/limited')).status).toBe(200);
+    expect((await request(app).get('/limited')).status).toBe(429);
+
+    expect((await request(app).get('/player-limited')).status).toBe(200);
+    expect((await request(app).get('/player-limited')).status).toBe(429);
+
+    expect((await request(app).get('/store-fail')).status).toBe(200);
+
+    const body = (await request(app).get('/metrics')).text;
+    expect(body).toContain('# TYPE scout_off_rate_limit_rejected_total counter');
+    expect(body).toContain('scout_off_rate_limit_rejected_total{limiter="test"} 1');
+    expect(body).toContain('scout_off_rate_limit_rejected_total{limiter="player"} 1');
+    expect(body).toContain('# TYPE scout_off_rate_limit_store_errors_total counter');
+    expect(body).toContain('scout_off_rate_limit_store_errors_total 1');
+  });
 });
+

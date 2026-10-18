@@ -333,6 +333,29 @@ export function resetWebhookDeadLetterInsertTimestamps(): void {
   webhookDeadLetterInsertTimestamps.length = 0;
 }
 
+// ─── Rate-limit rejection & store-error counters (#1571) ──────────────────────
+
+const rateLimitRejectedStore = new Map<string, number>();
+let rateLimitStoreErrorsTotal = 0;
+
+/** Increment `scout_off_rate_limit_rejected_total{limiter}` by 1. */
+export function incRateLimitRejected(limiter: string): void {
+  rateLimitRejectedStore.set(limiter, (rateLimitRejectedStore.get(limiter) ?? 0) + 1);
+}
+
+/** Increment `scout_off_rate_limit_store_errors_total` by 1. */
+export function incRateLimitStoreError(): void {
+  rateLimitStoreErrorsTotal += 1;
+}
+
+export function getRateLimitRejectedMetrics(): Record<string, number> {
+  return Object.fromEntries(rateLimitRejectedStore.entries());
+}
+
+export function getRateLimitStoreErrorsTotal(): number {
+  return rateLimitStoreErrorsTotal;
+}
+
 /** Resets every metric store. Intended for test isolation. */
 export function resetMetrics(): void {
   Object.keys(metricsStore).forEach((k) => delete metricsStore[k]);
@@ -346,6 +369,8 @@ export function resetMetrics(): void {
   cacheCountsStore.evictions = 0;
   cacheInvalidationStore.total = 0;
   stuckPendingPinsCount = 0;
+  rateLimitRejectedStore.clear();
+  rateLimitStoreErrorsTotal = 0;
   resetIpReputationCounters();
 }
 
@@ -603,6 +628,16 @@ export function serializeMetrics(extras: SerializeMetricsExtras = {}): string {
   lines.push('# HELP scout_off_tier_divergence_total Total number of player tier divergence events detected since process start');
   lines.push('# TYPE scout_off_tier_divergence_total counter');
   lines.push(`scout_off_tier_divergence_total ${getTierDivergenceForMetrics()}`);
+
+  // Rate-limit rejection and store-error counters (#1571).
+  lines.push('# HELP scout_off_rate_limit_rejected_total Total number of HTTP 429 rate-limit rejections by limiter name');
+  lines.push('# TYPE scout_off_rate_limit_rejected_total counter');
+  for (const [limiter, count] of rateLimitRejectedStore.entries()) {
+    lines.push(`scout_off_rate_limit_rejected_total{limiter="${escapeLabelValue(limiter)}"} ${count}`);
+  }
+  lines.push('# HELP scout_off_rate_limit_store_errors_total Total number of rate-limit store errors that triggered fail-open');
+  lines.push('# TYPE scout_off_rate_limit_store_errors_total counter');
+  lines.push(`scout_off_rate_limit_store_errors_total ${rateLimitStoreErrorsTotal}`);
 
   return lines.join('\n') + '\n';
 }

@@ -6,6 +6,7 @@ import { RedisRateLimitStore } from './redisRateLimitStore';
 import { getRedisClient } from '../services/redis';
 import { logger } from '../utils/logger';
 import { ErrorCode } from '../utils/errorCodes';
+import { incRateLimitRejected, incRateLimitStoreError } from './metrics';
 
 function createStore(): RateLimitStore {
   const redis = getRedisClient();
@@ -78,6 +79,7 @@ export function rateLimit(options: RateLimitOptions = {}) {
       const { count, resetAt } = await store.increment(`${namespace}:${key}`, windowMs);
 
       if (count > max) {
+        incRateLimitRejected(namespace);
         const now = Date.now();
         const retryAfterSec = Math.ceil(Math.max(0, resetAt - now) / 1000);
         res.set('Retry-After', String(retryAfterSec || 1));
@@ -92,6 +94,7 @@ export function rateLimit(options: RateLimitOptions = {}) {
     } catch (err) {
       // Redis (or other store) error: fail open — allow the request rather
       // than returning a 500.  Log at warn so operators can investigate.
+      incRateLimitStoreError();
       logger.warn('[rate-limit] store error, failing open', { ip, err });
       next();
     }
@@ -135,6 +138,7 @@ export function playerRateLimit(options: RateLimitOptions = {}) {
       const { count, resetAt } = await store.increment(`${namespace}:${playerId}`, windowMs);
 
       if (count > max) {
+        incRateLimitRejected(options.name ?? 'player');
         const now = Date.now();
         const retryAfterSec = Math.ceil(Math.max(0, resetAt - now) / 1000);
         res.set('Retry-After', String(retryAfterSec || 1));
@@ -147,6 +151,7 @@ export function playerRateLimit(options: RateLimitOptions = {}) {
       }
       next();
     } catch (err) {
+      incRateLimitStoreError();
       logger.warn('[rate-limit] store error (player limiter), failing open', { playerId, err });
       next();
     }
@@ -188,6 +193,7 @@ export function walletRateLimit(options: RateLimitOptions = {}) {
       const { count, resetAt } = await store.increment(`${namespace}:wallet:${wallet}`, windowMs);
 
       if (count > max) {
+        incRateLimitRejected(namespace);
         const now = Date.now();
         const retryAfterSec = Math.ceil(Math.max(0, resetAt - now) / 1000);
         res.set('Retry-After', String(retryAfterSec || 1));
@@ -201,8 +207,10 @@ export function walletRateLimit(options: RateLimitOptions = {}) {
       next();
     } catch (err) {
       // Redis (or other store) error: fail open.
+      incRateLimitStoreError();
       logger.warn('[rate-limit] store error, failing open', { wallet, err });
       next();
     }
   };
 }
+

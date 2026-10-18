@@ -454,4 +454,51 @@ describe('config validation: JWT_SECRET', () => {
     expect(result.success).toBe(true);
     expect(result.config.jwtSecret).toBe('a'.repeat(64));
   });
+
+  it.each(['changeme', 'CHANGEME', 'jwt_secret', 'my-secret', 'change-me-123', 'example_secret'])(
+    'production: rejects obvious placeholder JWT_SECRET "%s"',
+    async (placeholder) => {
+      const result = await loadConfigWithEnv({
+        nodeEnv: 'production',
+        adminWallet: VALID_WALLET,
+        sep10ServerSecret: VALID_SECRET,
+        apiKeyLookupSecret: validSecret,
+        platformSecretKey: 'SKEY1',
+        jwtSecret: placeholder,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('JWT_SECRET looks like a placeholder or default secret');
+    },
+  );
+
+  it('production: accepts a 64-character random hex string as JWT_SECRET', async () => {
+    const hexSecret = '6f1e9a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f90a1b2c3d4e5f60718293a4b';
+    const result = await loadConfigWithEnv({
+      nodeEnv: 'production',
+      adminWallet: VALID_WALLET,
+      sep10ServerSecret: VALID_SECRET,
+      apiKeyLookupSecret: validSecret,
+      platformSecretKey: 'SKEY1',
+      jwtSecret: hexSecret,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.config.jwtSecret).toBe(hexSecret);
+  });
+
+  it('production: accepts a long passphrase containing "secret" or "example" as a substring', async () => {
+    const passphrase = 'correct-horse-battery-secret-example-6f1e9a2b3c4d5e6f7a8b9c0d1e2f';
+    const result = await loadConfigWithEnv({
+      nodeEnv: 'production',
+      adminWallet: VALID_WALLET,
+      sep10ServerSecret: VALID_SECRET,
+      apiKeyLookupSecret: validSecret,
+      platformSecretKey: 'SKEY1',
+      jwtSecret: passphrase,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.config.jwtSecret).toBe(passphrase);
+  });
 });

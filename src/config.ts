@@ -72,7 +72,10 @@ if (!VALID_ENVS.has(rawNodeEnv)) {
 }
 const nodeEnv = rawNodeEnv as NodeEnv;
 
-function isLikelyPlaceholderSecret(secret: string): boolean {
+const DECORATED_PLACEHOLDER_PATTERN =
+  /^(?:change[-_]?me|replace[-_]?me|example(?:[-_]?secret)?|(?:my|test|development|dev|default|your|dummy|sample|placeholder)?[-_]?secret(?:[-_]?key)?|jwt[-_]?secret(?:[-_]?key)?)(?:[-_]?\d+|!+)*$/i;
+
+export function isLikelyPlaceholderSecret(secret: string): boolean {
   const normalized = secret.trim().toLowerCase();
   if (!normalized) return true;
 
@@ -89,11 +92,17 @@ function isLikelyPlaceholderSecret(secret: string): boolean {
     'replace_me',
     'secret',
     'mysecret',
+    'my-secret',
+    'my_secret',
     'test-secret',
+    'test_secret',
     'development-secret',
+    'development_secret',
   ];
 
-  return obviousPlaceholders.some((placeholder) => normalized === placeholder || normalized.includes(placeholder));
+  return (
+    obviousPlaceholders.includes(normalized) || DECORATED_PLACEHOLDER_PATTERN.test(normalized)
+  );
 }
 
 function validateSecretStrength(name: string, value: string): void {

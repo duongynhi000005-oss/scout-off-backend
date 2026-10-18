@@ -90,7 +90,7 @@ The sandbox can be started with `scripts/soroban-sandbox` (see [scripts/soroban-
 | `ADMIN_WALLETS` | — | Comma-separated list of admin wallet addresses (e.g., `GABC...,GDEF...`) |
 | `ADMIN_THRESHOLD` | — | Number of admin signatures required for high-value operations (default: `1`) |
 | `ADMIN_ACTION_TTL_MS` | — | TTL for pending admin multi-sig actions in milliseconds (default: `3600000` = 1 hour) |
-| `CORS_ALLOWED_ORIGINS` | — | Comma-separated CORS allowed origins (defaults per env: `*` in dev, `https://staging.scoutoff.io` in staging, `https://app.scoutoff.io,https://scoutoff.io` in prod) |
+| `CORS_ALLOWED_ORIGINS` | — | Comma-separated CORS allowed origins or safe subdomain wildcard patterns such as `https://*.scoutoff.app` (single-label) or `https://**.scoutoff.app` (multi-level). Wildcard patterns require at least two literal domain labels after the wildcard; `*` is allowed only outside production (defaults per env: `*` in dev/test, `https://staging.scoutoff.io` in staging, `https://app.scoutoff.io,https://scoutoff.io` in prod). |
 | `ADMIN_IP_ALLOWLIST` | — | Comma-separated list of **IPv4** addresses/CIDR ranges allowed to reach admin endpoints (e.g. `192.168.1.0/24,10.0.0.1`). Unset/empty disables the check. IPv6 is not supported yet — any IPv6 client IP is rejected with 403 regardless of this setting (fail closed). |
 | `RATE_LIMIT_ENABLED` | — | Enable rate limiting (default: `true`). See [docs/rate-limiting.md](docs/rate-limiting.md). |
 | `RATE_LIMIT_WINDOW_MS` | — | Rate limit window in milliseconds (default: `60000`). See [docs/rate-limiting.md](docs/rate-limiting.md). |

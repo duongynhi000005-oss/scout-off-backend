@@ -244,11 +244,111 @@ const DEFAULT_CORS_ORIGINS: Record<NodeEnv, string[]> = {
   production: ['https://app.scoutoff.io', 'https://scoutoff.io'],
 };
 
+export interface CompiledCorsOrigins {
+  isWildcard: boolean;
+  exactOrigins: Set<string>;
+  patternMatchers: RegExp[];
+  matches: (origin: string) => boolean;
+}
+
+const WILDCARD_ORIGIN_RE = /^(https?):\/\/(\*\*|\*)\.([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+)(?::([0-9]+))?$/;
+const INCOMING_ORIGIN_RE = /^([a-z]+):\/\/([^/:?#\s]+)(?::([0-9]+))?$/;
+
+/**
+ * Compile and validate CORS_ALLOWED_ORIGINS entries at startup (#1536).
+ *
+ * - Exact origins (e.g. `https://app.scoutoff.io`) are stored in a `Set` (with
+ *   hostname lowercased for matching while scheme and port are matched exactly).
+ * - Subdomain wildcard patterns:
+ *   - `https://*.scoutoff.app` matches a single subdomain label (`^https://[a-z0-9-]+\.scoutoff\.app$`)
+ *   - `https://**.scoutoff.app` matches one or more nested subdomain labels (`^https://[a-z0-9-]+(?:\.[a-z0-9-]+)*\.scoutoff\.app$`)
+ * - Rejects unsafe patterns: fewer than two literal domain labels after the
+ *   wildcard (e.g. `https://*.com`, `https://*`), wildcards in scheme or port,
+ *   partial-label wildcards (`https://*scoutoff.app`), or `*` in production.
+ */
+export function compileCorsOrigins(entries: string[], env: string = 'development'): CompiledCorsOrigins {
+  const exactOrigins = new Set<string>();
+  const patternMatchers: RegExp[] = [];
+  let isWildcard = false;
+
+  for (const rawEntry of entries) {
+    const entry = rawEntry.trim();
+    if (!entry) continue;
+
+    if (entry === '*') {
+      if (env === 'production') {
+        throw new Error(
+          'Invalid CORS_ALLOWED_ORIGINS: "*" is not allowed in production. ' +
+          'Specify explicit origins or safe subdomain wildcard patterns (e.g. "https://*.scoutoff.app").',
+        );
+      }
+      isWildcard = true;
+      continue;
+    }
+
+    if (entry.includes('*')) {
+      const m = WILDCARD_ORIGIN_RE.exec(entry);
+      if (!m) {
+        throw new Error(
+          `Invalid CORS origin pattern: "${entry}". Wildcard patterns must use http:// or https://, ` +
+          'a leading "*." or "**." subdomain wildcard, at least two literal domain labels after the wildcard ' +
+          '(e.g. "https://*.scoutoff.app"), and no wildcard in the scheme or port.',
+        );
+      }
+
+      const [, rawScheme, wildcardToken, rawBaseDomain, rawPort] = m;
+      const labels = rawBaseDomain.split('.');
+      if (labels.length < 2 || labels.some((label) => !label || label.startsWith('-') || label.endsWith('-'))) {
+        throw new Error(
+          `Invalid CORS origin pattern: "${entry}". Pattern must include at least two valid literal domain labels after the wildcard.`,
+        );
+      }
+
+      if (rawPort !== undefined) {
+        const portNum = Number(rawPort);
+        if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+          throw new Error(`Invalid port in CORS origin pattern: "${entry}".`);
+        }
+      }
+
+      const scheme = rawScheme.toLowerCase();
+      const subExpr = wildcardToken === '**' ? '[a-z0-9-]+(?:\\.[a-z0-9-]+)*' : '[a-z0-9-]+';
+      const escapedBase = rawBaseDomain.toLowerCase().replace(/\./g, '\\.');
+      const portSuffix = rawPort ? `:${rawPort}` : '';
+      patternMatchers.push(new RegExp(`^${scheme}://${subExpr}\\.${escapedBase}${portSuffix}$`));
+      continue;
+    }
+
+    exactOrigins.add(entry);
+    const parsed = INCOMING_ORIGIN_RE.exec(entry);
+    if (parsed) {
+      const [, scheme, host, port] = parsed;
+      exactOrigins.add(`${scheme}://${host.toLowerCase()}${port ? `:${port}` : ''}`);
+    }
+  }
+
+  const matches = (origin: string): boolean => {
+    if (isWildcard) return true;
+    if (exactOrigins.has(origin)) return true;
+
+    const parsed = INCOMING_ORIGIN_RE.exec(origin);
+    if (!parsed) return false;
+    const [, scheme, host, port] = parsed;
+    const normalized = `${scheme}://${host.toLowerCase()}${port ? `:${port}` : ''}`;
+
+    if (exactOrigins.has(normalized)) return true;
+    return patternMatchers.some((re) => re.test(normalized));
+  };
+
+  return { isWildcard, exactOrigins, patternMatchers, matches };
+}
+
 const rawCorsOrigins = process.env.CORS_ALLOWED_ORIGINS ?? process.env.ALLOWED_ORIGINS;
 const corsAllowedOrigins =
   rawCorsOrigins !== undefined && rawCorsOrigins.trim() !== ''
     ? rawCorsOrigins.split(',').map((o) => o.trim()).filter(Boolean)
     : DEFAULT_CORS_ORIGINS[nodeEnv];
+const corsCompiled = compileCorsOrigins(corsAllowedOrigins, nodeEnv);
 
 // Validate NETWORK and derive networkPassphrase with defaults per network type.
 // Acceptable network values: 'testnet', 'mainnet', 'futurenet', 'standalone'.
@@ -564,6 +664,7 @@ const config = {
   },
   corsAllowedOrigins,
   allowedOrigins: corsAllowedOrigins,
+  corsCompiled,
   logLevel: (process.env.LOG_LEVEL ?? ENV_LOG_LEVEL[nodeEnv]) as LogLevel,
   showErrorDetails: nodeEnv === 'development' || nodeEnv === 'test',
   useMockServices: nodeEnv === 'development' || nodeEnv === 'test',

@@ -81,19 +81,21 @@ async function probeDbWritable(timeoutMs = 2_000): Promise<'ok' | 'error'> {
 // log a warning and reject all cross-origin requests.
 
 const isDevOrTest = config.nodeEnv === 'development' || config.nodeEnv === 'test';
-const allowedOrigins = config.corsAllowedOrigins;
+const allowedOrigins = config.corsAllowedOrigins ?? config.allowedOrigins ?? [];
 
-if (!isDevOrTest && (!allowedOrigins || allowedOrigins.length === 0)) {
+if (!isDevOrTest && allowedOrigins.length === 0) {
   logger.warn(
     '[cors] WARNING: CORS_ALLOWED_ORIGINS is not set in production. ' +
     'All cross-origin requests will be rejected.',
   );
 }
 
-const isWildcard = allowedOrigins.includes('*');
+const isWildcard = config.corsCompiled
+  ? config.corsCompiled.isWildcard
+  : allowedOrigins.includes('*');
 
 const corsOptions: CorsOptions = {
-  // Callback-based origin so we can do per-request allow/deny
+  // Callback-based origin so we can do per-request allow/deny (exact or wildcard subdomain pattern)
   origin: (origin, callback) => {
     // Same-origin or server-to-server (no Origin header) — always allow
     if (!origin) {
@@ -107,8 +109,11 @@ const corsOptions: CorsOptions = {
       return;
     }
 
-    // Explicit allowlist check (case-sensitive, exact match)
-    if (allowedOrigins.includes(origin)) {
+    // Explicit allowlist + compiled subdomain pattern check
+    const matched = config.corsCompiled
+      ? config.corsCompiled.matches(origin)
+      : allowedOrigins.includes(origin);
+    if (matched) {
       callback(null, origin);
       return;
     }
@@ -138,7 +143,7 @@ const corsOptions: CorsOptions = {
     'X-RateLimit-Reputation-Limit',
   ],
   // credentials cannot be used with a wildcard origin (CORS spec); only enable
-  // it when we are using an explicit allowlist
+  // it when we are using an explicit allowlist or safe subdomain pattern
   credentials: !isWildcard,
   maxAge: 86400, // 24 hours — browsers cache pre-flight for this duration
   preflightContinue: false,
@@ -183,7 +188,7 @@ app.use(compression({
     return compression.filter(req, res);
   },
 }));
-// Set Vary: Accept-Encoding header and log compressed response sizes
+// Append Vary: Accept-Encoding header and log compressed response sizes
 app.use((req, res, next) => {
   const originalEnd = res.end;
   res.end = function (chunk?: any, encoding?: any) {
@@ -192,7 +197,7 @@ app.use((req, res, next) => {
     // wrapped end() runs, headers may already be sent, and setHeader()
     // throws ERR_HTTP_HEADERS_SENT. Only set Vary while it's still safe to.
     if (!res.headersSent && res.getHeader('content-encoding')) {
-      res.setHeader('Vary', 'Accept-Encoding');
+      res.vary('Accept-Encoding');
       if (config.logLevel === 'debug') {
         logger.debug(`[compression] ${req.method} ${req.path} - encoding: ${res.getHeader('content-encoding')}`);
       }

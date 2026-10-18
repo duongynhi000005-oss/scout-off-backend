@@ -150,4 +150,96 @@ describe('CORS origin allowlist', () => {
       .set('Access-Control-Request-Method', 'GET');
     expect(res.headers['access-control-allow-origin']).toBeUndefined();
   });
+
+  describe('wildcard subdomain patterns (#1536)', () => {
+    it('allows single-label subdomains matching https://*.scoutoff.app and sets Vary: Origin + credentials', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.CORS_ALLOWED_ORIGINS = 'https://*.scoutoff.app';
+
+      const { default: app } = await import('../../src/app');
+      const res = await request(app)
+        .get('/health')
+        .set('Origin', 'https://pr-123.scoutoff.app');
+
+      expect(res.headers['access-control-allow-origin']).toBe('https://pr-123.scoutoff.app');
+      expect(res.headers['access-control-allow-credentials']).toBe('true');
+      expect(String(res.headers['vary'])).toContain('Origin');
+    });
+
+    it('lowercases the incoming Origin host while matching scheme and port exactly', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.CORS_ALLOWED_ORIGINS = 'https://*.scoutoff.app:8443';
+
+      const { default: app } = await import('../../src/app');
+
+      const allowedRes = await request(app)
+        .get('/health')
+        .set('Origin', 'https://PR-456.ScoutOff.App:8443');
+      expect(allowedRes.headers['access-control-allow-origin']).toBe('https://PR-456.ScoutOff.App:8443');
+
+      const wrongPortRes = await request(app)
+        .get('/health')
+        .set('Origin', 'https://pr-456.scoutoff.app:9443');
+      expect(wrongPortRes.headers['access-control-allow-origin']).toBeUndefined();
+
+      const wrongSchemeRes = await request(app)
+        .get('/health')
+        .set('Origin', 'http://pr-456.scoutoff.app:8443');
+      expect(wrongSchemeRes.headers['access-control-allow-origin']).toBeUndefined();
+    });
+
+    it('rejects nested subdomains on single-label wildcard (*) and allows them on multi-level wildcard (**)', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.CORS_ALLOWED_ORIGINS = 'https://*.scoutoff.app';
+
+      const { default: appSingle } = await import('../../src/app');
+      const nestedBlocked = await request(appSingle)
+        .get('/health')
+        .set('Origin', 'https://a.b.scoutoff.app');
+      expect(nestedBlocked.headers['access-control-allow-origin']).toBeUndefined();
+
+      jest.resetModules();
+      process.env.CORS_ALLOWED_ORIGINS = 'https://**.scoutoff.app';
+      const { default: appMulti } = await import('../../src/app');
+      const nestedAllowed = await request(appMulti)
+        .get('/health')
+        .set('Origin', 'https://a.b.scoutoff.app');
+      expect(nestedAllowed.headers['access-control-allow-origin']).toBe('https://a.b.scoutoff.app');
+    });
+
+    it.each([
+      'https://evilscoutoff.app',
+      'https://scoutoff.app.evil.com',
+      'https://pr-123.scoutoff.app.evil.com',
+      'https://scoutoff.app',
+      'http://pr-123.scoutoff.app',
+    ])('rejects look-alike, suffix-attack, bare apex, and wrong-scheme origin %s', async (badOrigin) => {
+      process.env.NODE_ENV = 'production';
+      process.env.CORS_ALLOWED_ORIGINS = 'https://*.scoutoff.app';
+
+      const { default: app } = await import('../../src/app');
+      const res = await request(app).get('/health').set('Origin', badOrigin);
+      expect(res.headers['access-control-allow-origin']).toBeUndefined();
+    });
+
+    it.each([
+      '*.com',
+      'https://*.com',
+      'https://*',
+      'https://**',
+      'https://*scoutoff.app',
+      '*://*.scoutoff.app',
+      'https://*.scoutoff.app:*',
+      'https://*.scoutoff.app/path',
+    ])('rejects unsafe wildcard pattern %s at startup', async (unsafePattern) => {
+      const { compileCorsOrigins } = await import('../../src/config');
+      expect(() => compileCorsOrigins([unsafePattern], 'production')).toThrow(/Invalid CORS origin pattern/);
+    });
+
+    it('rejects bare "*" in production at startup', async () => {
+      const { compileCorsOrigins } = await import('../../src/config');
+      expect(() => compileCorsOrigins(['*'], 'production')).toThrow(/not allowed in production/);
+    });
+  });
 });
+

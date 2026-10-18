@@ -284,6 +284,11 @@ env:
   ADMIN_ACTION_TTL_MS: "3600000"
   # Player cache TTL in ms. Default: 60000 (1 min).
   PLAYER_CACHE_TTL_MS: "60000"
+  # Outbound circuit breaker thresholds
+  CIRCUIT_BREAKER_FAILURE_THRESHOLD: "5"
+  CIRCUIT_BREAKER_RESET_TIMEOUT_MS: "30000"
+  IPFS_BREAKER_FAILURE_THRESHOLD: "5"
+  IPFS_BREAKER_RESET_TIMEOUT_MS: "30000"
 
 # -----------------------------------------------------------------------------
 # Pod annotations

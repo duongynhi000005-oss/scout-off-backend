@@ -78,8 +78,10 @@ const PINATA_TEST_URL     = 'https://api.pinata.cloud/data/testAuthentication';
  */
 export const ipfsBreaker = new CircuitBreaker({
   name: 'ipfs',
-  failureThreshold: parseInt(process.env.IPFS_BREAKER_FAILURE_THRESHOLD ?? '5', 10),
-  resetTimeoutMs: parseInt(process.env.IPFS_BREAKER_RESET_TIMEOUT_MS ?? '30000', 10),
+  failureThreshold:
+    config.circuitBreaker?.ipfs?.failureThreshold ?? config.ipfsBreaker?.failureThreshold,
+  resetTimeoutMs:
+    config.circuitBreaker?.ipfs?.resetTimeoutMs ?? config.ipfsBreaker?.resetTimeoutMs,
 });
 
 export { CircuitBreakerOpenError };

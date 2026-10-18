@@ -361,6 +361,10 @@ describe('parseNumericEnv validation', () => {
     'EVIDENCE_MAX_BYTES',
     'ADMIN_ACTION_TTL_MS',
     'COMPRESSION_THRESHOLD',
+    'CIRCUIT_BREAKER_FAILURE_THRESHOLD',
+    'CIRCUIT_BREAKER_RESET_TIMEOUT_MS',
+    'IPFS_BREAKER_FAILURE_THRESHOLD',
+    'IPFS_BREAKER_RESET_TIMEOUT_MS',
   ];
 
   beforeEach(() => {
@@ -648,5 +652,43 @@ describe('parseNumericEnv validation', () => {
     const cfg = await loadConfig();
     expect(cfg.compressionThresholdBytes).toBe(512);
     delete process.env.COMPRESSION_THRESHOLD_BYTES;
+  });
+
+  // ── CIRCUIT_BREAKER_* and IPFS_BREAKER_* ─────────────────────────────────────
+
+  it('populates config.circuitBreaker.default and config.circuitBreaker.ipfs from env', async () => {
+    process.env.CIRCUIT_BREAKER_FAILURE_THRESHOLD = '7';
+    process.env.CIRCUIT_BREAKER_RESET_TIMEOUT_MS = '15000';
+    process.env.IPFS_BREAKER_FAILURE_THRESHOLD = '4';
+    process.env.IPFS_BREAKER_RESET_TIMEOUT_MS = '20000';
+    const cfg = await loadConfig();
+    expect(cfg.circuitBreaker.default).toEqual({
+      failureThreshold: 7,
+      resetTimeoutMs: 15000,
+    });
+    expect(cfg.circuitBreaker.ipfs).toEqual({
+      failureThreshold: 4,
+      resetTimeoutMs: 20000,
+    });
+  });
+
+  it('CIRCUIT_BREAKER_FAILURE_THRESHOLD: 0 is below min (1) and throws', async () => {
+    process.env.CIRCUIT_BREAKER_FAILURE_THRESHOLD = '0';
+    await expectThrowsContaining('CIRCUIT_BREAKER_FAILURE_THRESHOLD');
+  });
+
+  it('CIRCUIT_BREAKER_RESET_TIMEOUT_MS: 500 is below min (1000) and throws', async () => {
+    process.env.CIRCUIT_BREAKER_RESET_TIMEOUT_MS = '500';
+    await expectThrowsContaining('CIRCUIT_BREAKER_RESET_TIMEOUT_MS');
+  });
+
+  it('IPFS_BREAKER_FAILURE_THRESHOLD: 0 is below min (1) and throws', async () => {
+    process.env.IPFS_BREAKER_FAILURE_THRESHOLD = '0';
+    await expectThrowsContaining('IPFS_BREAKER_FAILURE_THRESHOLD');
+  });
+
+  it('IPFS_BREAKER_RESET_TIMEOUT_MS: 500 is below min (1000) and throws', async () => {
+    process.env.IPFS_BREAKER_RESET_TIMEOUT_MS = '500';
+    await expectThrowsContaining('IPFS_BREAKER_RESET_TIMEOUT_MS');
   });
 });

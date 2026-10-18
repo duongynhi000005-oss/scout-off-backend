@@ -781,12 +781,20 @@ const config = {
   // Default circuit breaker thresholds for generic outbound calls (Stellar RPC, etc.).
   circuitBreaker: {
     failureThreshold: parseNumericEnv('CIRCUIT_BREAKER_FAILURE_THRESHOLD', process.env.CIRCUIT_BREAKER_FAILURE_THRESHOLD, 5, { min: 1, integer: true }),
-    resetTimeoutMs: parseNumericEnv('CIRCUIT_BREAKER_RESET_TIMEOUT_MS', process.env.CIRCUIT_BREAKER_RESET_TIMEOUT_MS, 30000, { min: 1, integer: true }),
+    resetTimeoutMs: parseNumericEnv('CIRCUIT_BREAKER_RESET_TIMEOUT_MS', process.env.CIRCUIT_BREAKER_RESET_TIMEOUT_MS, 30000, { min: 1000, integer: true }),
+    default: {
+      failureThreshold: parseNumericEnv('CIRCUIT_BREAKER_FAILURE_THRESHOLD', process.env.CIRCUIT_BREAKER_FAILURE_THRESHOLD, 5, { min: 1, integer: true }),
+      resetTimeoutMs: parseNumericEnv('CIRCUIT_BREAKER_RESET_TIMEOUT_MS', process.env.CIRCUIT_BREAKER_RESET_TIMEOUT_MS, 30000, { min: 1000, integer: true }),
+    },
+    ipfs: {
+      failureThreshold: parseNumericEnv('IPFS_BREAKER_FAILURE_THRESHOLD', process.env.IPFS_BREAKER_FAILURE_THRESHOLD, 5, { min: 1, integer: true }),
+      resetTimeoutMs: parseNumericEnv('IPFS_BREAKER_RESET_TIMEOUT_MS', process.env.IPFS_BREAKER_RESET_TIMEOUT_MS, 30000, { min: 1000, integer: true }),
+    },
   },
   // IPFS pinning circuit breaker (often tighter than generic).
   ipfsBreaker: {
     failureThreshold: parseNumericEnv('IPFS_BREAKER_FAILURE_THRESHOLD', process.env.IPFS_BREAKER_FAILURE_THRESHOLD, 5, { min: 1, integer: true }),
-    resetTimeoutMs: parseNumericEnv('IPFS_BREAKER_RESET_TIMEOUT_MS', process.env.IPFS_BREAKER_RESET_TIMEOUT_MS, 30000, { min: 1, integer: true }),
+    resetTimeoutMs: parseNumericEnv('IPFS_BREAKER_RESET_TIMEOUT_MS', process.env.IPFS_BREAKER_RESET_TIMEOUT_MS, 30000, { min: 1000, integer: true }),
   },
 
   // ── Database migration validation (#1318) ─────────────────────────────

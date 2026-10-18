@@ -15,8 +15,23 @@ import config from '../config';
 import { correlationMemoFromContext, recordTxCorrelation } from './txCorrelation';
 import { getRequestSignal } from '../utils/requestContext';
 
-import { stellarBreaker } from '../utils/circuitBreaker';
+import {
+  RetryingCircuitBreaker,
+  stellarBreaker as defaultStellarBreaker,
+} from '../utils/circuitBreaker';
 import { getPlayerById } from '../db';
+
+const stellarBreaker =
+  typeof RetryingCircuitBreaker === 'function'
+    ? new RetryingCircuitBreaker({
+        failureThreshold:
+          config.circuitBreaker?.default?.failureThreshold ??
+          config.circuitBreaker?.failureThreshold,
+        resetTimeoutMs:
+          config.circuitBreaker?.default?.resetTimeoutMs ??
+          config.circuitBreaker?.resetTimeoutMs,
+      })
+    : defaultStellarBreaker;
 
 const tracer = trace.getTracer('scout-off-backend');
 

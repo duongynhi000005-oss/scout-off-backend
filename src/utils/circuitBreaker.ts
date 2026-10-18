@@ -49,12 +49,8 @@ export class CircuitBreaker {
 
   constructor(options: CircuitBreakerOptions = {}) {
     this.name = options.name ?? 'unknown';
-    this.failureThreshold =
-      options.failureThreshold ??
-      parseInt(process.env.CIRCUIT_BREAKER_FAILURE_THRESHOLD ?? '5', 10);
-    this.resetTimeoutMs =
-      options.resetTimeoutMs ??
-      parseInt(process.env.CIRCUIT_BREAKER_RESET_TIMEOUT_MS ?? '30000', 10);
+    this.failureThreshold = options.failureThreshold ?? 5;
+    this.resetTimeoutMs = options.resetTimeoutMs ?? 30000;
   }
 
   getState(): CircuitState {
@@ -138,11 +134,10 @@ export class RetryingCircuitBreaker {
 
   constructor(config: Partial<CircuitBreakerConfig> = {}) {
     this.config = {
-      failureThreshold: 3,
-      resetTimeoutMs: 10000,
-      maxRetries: 3,
-      baseBackoffMs: 1000,
-      ...config,
+      failureThreshold: config.failureThreshold ?? 3,
+      resetTimeoutMs: config.resetTimeoutMs ?? 10000,
+      maxRetries: config.maxRetries ?? 3,
+      baseBackoffMs: config.baseBackoffMs ?? 1000,
     };
   }
 

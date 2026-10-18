@@ -652,58 +652,58 @@ describe('parseNumericEnv validation', () => {
 });
 
 describe('config .env loading (#1604)', () => {
-  const VALID_SECRET = 'a'.repeat(32);
+  async function reloadAndSpyDotenv(env: string) {
+    process.env.NODE_ENV = env;
+    if (env === 'production' || env === 'staging') {
+      process.env.ADMIN_WALLET = 'GADMINWALLET1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+      process.env.JWT_SECRET = 'k8Zq3vN1pW7xR4tY9bM2cF6hJ0lD5sGaQe';
+    }
+    if (env !== 'test') {
+      process.env.PLATFORM_SECRET_KEY = 'SPLATFORMSECRETKEY1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+    }
+    if (env === 'production') {
+      process.env.SEP10_SERVER_SECRET = 'SSEP10SERVERSECRET1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+      process.env.API_KEY_LOOKUP_SECRET = 'a'.repeat(64);
+    }
+    jest.resetModules();
+    const dotenv = await import('dotenv');
+    const spy = jest.spyOn(dotenv.default, 'config').mockReturnValue({ parsed: {} });
+    await import('../src/config');
+    return spy;
+  }
 
   afterEach(() => {
     delete process.env.DOTENV_ENABLED;
-    delete process.env.PINATA_JWT;
+    delete process.env.ADMIN_WALLET;
+    delete process.env.PLATFORM_SECRET_KEY;
+    delete process.env.SEP10_SERVER_SECRET;
+    delete process.env.API_KEY_LOOKUP_SECRET;
+    process.env.JWT_SECRET = 'test-secret';
     process.env.NODE_ENV = 'test';
     jest.restoreAllMocks();
   });
 
   it('does not call dotenv.config() in production when DOTENV_ENABLED is not set', async () => {
-    const dotenv = await import('dotenv');
-    const spy = jest.spyOn(dotenv.default, 'config');
-    process.env.NODE_ENV = 'production';
-    process.env.JWT_SECRET = VALID_SECRET;
-    process.env.PINATA_JWT = 'valid-pinata-jwt';
     delete process.env.DOTENV_ENABLED;
-
-    await loadConfig();
+    const spy = await reloadAndSpyDotenv('production');
     expect(spy).not.toHaveBeenCalled();
   });
 
   it('does not call dotenv.config() in staging when DOTENV_ENABLED is not set', async () => {
-    const dotenv = await import('dotenv');
-    const spy = jest.spyOn(dotenv.default, 'config');
-    process.env.NODE_ENV = 'staging';
-    process.env.JWT_SECRET = VALID_SECRET;
     delete process.env.DOTENV_ENABLED;
-
-    await loadConfig();
+    const spy = await reloadAndSpyDotenv('staging');
     expect(spy).not.toHaveBeenCalled();
   });
 
   it('calls dotenv.config() in production when DOTENV_ENABLED=true', async () => {
-    const dotenv = await import('dotenv');
-    const spy = jest.spyOn(dotenv.default, 'config').mockReturnValue({ parsed: {} });
-    process.env.NODE_ENV = 'production';
-    process.env.JWT_SECRET = VALID_SECRET;
-    process.env.PINATA_JWT = 'valid-pinata-jwt';
     process.env.DOTENV_ENABLED = 'true';
-
-    await loadConfig();
+    const spy = await reloadAndSpyDotenv('production');
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it('calls dotenv.config() by default in development and test', async () => {
-    const dotenv = await import('dotenv');
-    const spy = jest.spyOn(dotenv.default, 'config').mockReturnValue({ parsed: {} });
-    process.env.NODE_ENV = 'development';
-    process.env.JWT_SECRET = VALID_SECRET;
     delete process.env.DOTENV_ENABLED;
-
-    await loadConfig();
+    const spy = await reloadAndSpyDotenv('development');
     expect(spy).toHaveBeenCalledTimes(1);
   });
 });

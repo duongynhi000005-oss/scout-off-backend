@@ -25,6 +25,8 @@
     "test:postgres": "node scripts/run-postgres-tests.js",
     "test:watch": "node node_modules/jest/bin/jest.js --watch",
     "lint": "eslint 'src/**/*.ts' 'tests/**/*.ts' 'scripts/*.ts' --ext .ts",
+    "lint:fix": "eslint 'src/**/*.ts' 'tests/**/*.ts' 'scripts/*.ts' --ext .ts --fix",
+    "lint:ci": "eslint 'src/**/*.ts' 'tests/**/*.ts' 'scripts/*.ts' --ext .ts",
     "seed": "ts-node --project tsconfig.scripts.json scripts/seed.ts",
     "migration:status": "ts-node --project tsconfig.scripts.json scripts/migration-status.ts",
     "build:openapi": "node scripts/generate-openapi-json.js",

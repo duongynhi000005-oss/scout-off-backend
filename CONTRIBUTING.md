@@ -227,7 +227,9 @@ Comment on the GitHub issue to indicate you're working on it. Maintainers will a
 ```bash
 npm run dev                  # Start dev server with hot-reload
 npm run test                 # Run full test suite
-npm run lint                 # Check code style
+npm run lint                 # Check code style across src, tests, and scripts
+npm run lint:fix             # Auto-fix ESLint issues across src, tests, and scripts
+npm run lint:ci              # Run ESLint check used by CI
 npm run typecheck            # Fast type-check (tsc --noEmit), no build output
 npm run check:sql-injection  # Scan src/db for unsafe SQL string interpolation
 npm audit                    # Check for security vulnerabilities

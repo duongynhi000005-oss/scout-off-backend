@@ -20,7 +20,10 @@
 // Plain breaker (IPFS / Pinata) — issue #1142
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { registerBreaker } from '../middleware/metrics';
+
 export type CircuitState = 'closed' | 'open' | 'half-open';
+export type CircuitStateChangeListener = (from: CircuitState, to: CircuitState) => void;
 
 export interface CircuitBreakerOptions {
   /** Number of consecutive failures before opening. Default: 5 */
@@ -29,6 +32,8 @@ export interface CircuitBreakerOptions {
   resetTimeoutMs?: number;
   /** Human-readable name used in error messages and logs. */
   name?: string;
+  /** Optional callback fired whenever the breaker transitions between states. */
+  onStateChange?: CircuitStateChangeListener;
 }
 
 export class CircuitBreakerOpenError extends Error {
@@ -42,6 +47,7 @@ export class CircuitBreaker {
   private state: CircuitState = 'closed';
   private failures = 0;
   private lastOpenedAt: number | null = null;
+  private readonly listeners: CircuitStateChangeListener[] = [];
 
   private readonly failureThreshold: number;
   private readonly resetTimeoutMs: number;
@@ -55,12 +61,28 @@ export class CircuitBreaker {
     this.resetTimeoutMs =
       options.resetTimeoutMs ??
       parseInt(process.env.CIRCUIT_BREAKER_RESET_TIMEOUT_MS ?? '30000', 10);
+    if (options.onStateChange) {
+      this.listeners.push(options.onStateChange);
+    }
+  }
+
+  addStateChangeListener(listener: CircuitStateChangeListener): void {
+    this.listeners.push(listener);
+  }
+
+  private transitionTo(next: CircuitState): void {
+    const prev = this.state;
+    if (prev === next) return;
+    this.state = next;
+    for (const listener of this.listeners) {
+      listener(prev, next);
+    }
   }
 
   getState(): CircuitState {
     if (this.state === 'open' && this.lastOpenedAt !== null) {
       if (Date.now() - this.lastOpenedAt >= this.resetTimeoutMs) {
-        this.state = 'half-open';
+        this.transitionTo('half-open');
       }
     }
     return this.state;
@@ -90,15 +112,15 @@ export class CircuitBreaker {
 
   private onSuccess(): void {
     this.failures = 0;
-    this.state = 'closed';
     this.lastOpenedAt = null;
+    this.transitionTo('closed');
   }
 
   private onFailure(): void {
     this.failures += 1;
     if (this.state === 'half-open' || this.failures >= this.failureThreshold) {
-      this.state = 'open';
       this.lastOpenedAt = Date.now();
+      this.transitionTo('open');
     }
   }
 
@@ -124,19 +146,30 @@ export class CircuitBreakerError extends Error {
 }
 
 export interface CircuitBreakerConfig {
+  name?: string;
   failureThreshold: number;
   resetTimeoutMs: number;
   maxRetries: number;
   baseBackoffMs: number;
+  onStateChange?: CircuitStateChangeListener;
+}
+
+function toNormalizedState(state: CircuitBreakerState): CircuitState {
+  if (state === 'OPEN') return 'open';
+  if (state === 'HALF_OPEN') return 'half-open';
+  return 'closed';
 }
 
 export class RetryingCircuitBreaker {
-  public state: CircuitBreakerState = 'CLOSED';
+  private _state: CircuitBreakerState = 'CLOSED';
   private failureCount = 0;
   private nextAttemptAt = 0;
   private config: CircuitBreakerConfig;
+  private readonly listeners: CircuitStateChangeListener[] = [];
+  readonly name: string;
 
   constructor(config: Partial<CircuitBreakerConfig> = {}) {
+    this.name = config.name ?? 'stellar';
     this.config = {
       failureThreshold: 3,
       resetTimeoutMs: 10000,
@@ -144,12 +177,45 @@ export class RetryingCircuitBreaker {
       baseBackoffMs: 1000,
       ...config,
     };
+    if (config.onStateChange) {
+      this.listeners.push(config.onStateChange);
+    }
+  }
+
+  get state(): CircuitBreakerState {
+    return this._state;
+  }
+
+  set state(next: CircuitBreakerState) {
+    this.transitionTo(next);
+  }
+
+  addStateChangeListener(listener: CircuitStateChangeListener): void {
+    this.listeners.push(listener);
+  }
+
+  private transitionTo(next: CircuitBreakerState): void {
+    const prev = this._state;
+    if (prev === next) return;
+    this._state = next;
+    const prevNorm = toNormalizedState(prev);
+    const nextNorm = toNormalizedState(next);
+    for (const listener of this.listeners) {
+      listener(prevNorm, nextNorm);
+    }
+  }
+
+  getState(): CircuitState {
+    if (this._state === 'OPEN' && this.nextAttemptAt > 0 && Date.now() >= this.nextAttemptAt) {
+      this.transitionTo('HALF_OPEN');
+    }
+    return toNormalizedState(this._state);
   }
 
   async execute<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.state === 'OPEN') {
+    if (this._state === 'OPEN') {
       if (Date.now() >= this.nextAttemptAt) {
-        this.state = 'HALF_OPEN';
+        this.transitionTo('HALF_OPEN');
       } else {
         throw new CircuitBreakerError('ServiceUnavailable: Circuit breaker is OPEN');
       }
@@ -197,16 +263,25 @@ export class RetryingCircuitBreaker {
 
   private onSuccess() {
     this.failureCount = 0;
-    this.state = 'CLOSED';
+    this.transitionTo('CLOSED');
   }
 
   private onFailure() {
     this.failureCount++;
-    if (this.failureCount >= this.config.failureThreshold) {
-      this.state = 'OPEN';
+    if (this._state === 'HALF_OPEN' || this.failureCount >= this.config.failureThreshold) {
       this.nextAttemptAt = Date.now() + this.config.resetTimeoutMs;
+      this.transitionTo('OPEN');
     }
+  }
+
+  /** Reset for testing purposes. */
+  reset(): void {
+    this._state = 'CLOSED';
+    this.failureCount = 0;
+    this.nextAttemptAt = 0;
   }
 }
 
-export const stellarBreaker = new RetryingCircuitBreaker();
+export const stellarBreaker = new RetryingCircuitBreaker({ name: 'stellar' });
+registerBreaker(stellarBreaker);
+

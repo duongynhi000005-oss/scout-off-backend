@@ -62,7 +62,7 @@ import {
   updatePendingPinReconciliation,
   countStuckPendingPins,
 } from '../db';
-import { observeIpfsLatency, setStuckPendingPinsCount } from '../middleware/metrics';
+import { observeIpfsLatency, registerBreaker, setStuckPendingPinsCount } from '../middleware/metrics';
 
 const tracer = trace.getTracer('scout-off-backend');
 
@@ -81,6 +81,7 @@ export const ipfsBreaker = new CircuitBreaker({
   failureThreshold: parseInt(process.env.IPFS_BREAKER_FAILURE_THRESHOLD ?? '5', 10),
   resetTimeoutMs: parseInt(process.env.IPFS_BREAKER_RESET_TIMEOUT_MS ?? '30000', 10),
 });
+registerBreaker(ipfsBreaker);
 
 export { CircuitBreakerOpenError };
 

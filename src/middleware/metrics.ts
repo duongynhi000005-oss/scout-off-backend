@@ -333,6 +333,84 @@ export function resetWebhookDeadLetterInsertTimestamps(): void {
   webhookDeadLetterInsertTimestamps.length = 0;
 }
 
+// ─── Circuit breaker state gauge & transition counters (#1573) ────────────────
+
+export type NormalizedBreakerState = 'closed' | 'half-open' | 'open';
+
+export interface ObservableBreaker {
+  readonly name: string;
+  getState(): string;
+  addStateChangeListener?: (
+    listener: (from: NormalizedBreakerState, to: NormalizedBreakerState) => void,
+  ) => void;
+}
+
+const registeredBreakers = new Map<string, ObservableBreaker>();
+const subscribedBreakerInstances = new WeakSet<object>();
+
+const circuitBreakerTransitionsStore: Record<
+  string,
+  Record<NormalizedBreakerState, number>
+> = {
+  stellar: { closed: 0, 'half-open': 0, open: 0 },
+  ipfs: { closed: 0, 'half-open': 0, open: 0 },
+};
+
+function normalizeBreakerState(raw: string): NormalizedBreakerState {
+  const lower = raw.toLowerCase();
+  if (lower === 'open') return 'open';
+  if (lower === 'half-open' || lower === 'half_open') return 'half-open';
+  return 'closed';
+}
+
+function breakerStateToGaugeValue(state: NormalizedBreakerState): 0 | 1 | 2 {
+  if (state === 'open') return 2;
+  if (state === 'half-open') return 1;
+  return 0;
+}
+
+/** Increment scout_off_circuit_breaker_transitions_total{breaker,to}. */
+export function recordCircuitBreakerTransition(
+  breakerName: string,
+  to: NormalizedBreakerState,
+): void {
+  if (!circuitBreakerTransitionsStore[breakerName]) {
+    circuitBreakerTransitionsStore[breakerName] = { closed: 0, 'half-open': 0, open: 0 };
+  }
+  circuitBreakerTransitionsStore[breakerName][to] += 1;
+}
+
+/**
+ * Register a circuit breaker instance so `/metrics` can read its live state
+ * and count state transitions (`closed` = 0, `half-open` = 1, `open` = 2).
+ */
+export function registerBreaker(breaker: ObservableBreaker): void {
+  registeredBreakers.set(breaker.name, breaker);
+  if (!circuitBreakerTransitionsStore[breaker.name]) {
+    circuitBreakerTransitionsStore[breaker.name] = { closed: 0, 'half-open': 0, open: 0 };
+  }
+  if (
+    typeof breaker.addStateChangeListener === 'function' &&
+    !subscribedBreakerInstances.has(breaker)
+  ) {
+    subscribedBreakerInstances.add(breaker);
+    breaker.addStateChangeListener((_from, to) => {
+      recordCircuitBreakerTransition(breaker.name, to);
+    });
+  }
+}
+
+export function getCircuitBreakerTransitions(): Record<
+  string,
+  Record<NormalizedBreakerState, number>
+> {
+  const copy: Record<string, Record<NormalizedBreakerState, number>> = {};
+  for (const [name, counts] of Object.entries(circuitBreakerTransitionsStore)) {
+    copy[name] = { ...counts };
+  }
+  return copy;
+}
+
 /** Resets every metric store. Intended for test isolation. */
 export function resetMetrics(): void {
   Object.keys(metricsStore).forEach((k) => delete metricsStore[k]);
@@ -346,6 +424,18 @@ export function resetMetrics(): void {
   cacheCountsStore.evictions = 0;
   cacheInvalidationStore.total = 0;
   stuckPendingPinsCount = 0;
+  for (const name of Array.from(registeredBreakers.keys())) {
+    if (name !== 'stellar' && name !== 'ipfs') {
+      registeredBreakers.delete(name);
+    }
+  }
+  for (const name of Object.keys(circuitBreakerTransitionsStore)) {
+    if (name !== 'stellar' && name !== 'ipfs') {
+      delete circuitBreakerTransitionsStore[name];
+    } else {
+      circuitBreakerTransitionsStore[name] = { closed: 0, 'half-open': 0, open: 0 };
+    }
+  }
   resetIpReputationCounters();
 }
 
@@ -603,6 +693,29 @@ export function serializeMetrics(extras: SerializeMetricsExtras = {}): string {
   lines.push('# HELP scout_off_tier_divergence_total Total number of player tier divergence events detected since process start');
   lines.push('# TYPE scout_off_tier_divergence_total counter');
   lines.push(`scout_off_tier_divergence_total ${getTierDivergenceForMetrics()}`);
+
+  // Circuit breaker state gauge and transition counters (#1573).
+  lines.push('# HELP scout_off_circuit_breaker_state Current circuit breaker state (0 = closed, 1 = half-open, 2 = open)');
+  lines.push('# TYPE scout_off_circuit_breaker_state gauge');
+  const breakerNames = new Set<string>(['stellar', 'ipfs', ...registeredBreakers.keys()]);
+  for (const name of breakerNames) {
+    const breaker = registeredBreakers.get(name);
+    const state = breaker ? normalizeBreakerState(breaker.getState()) : 'closed';
+    lines.push(
+      `scout_off_circuit_breaker_state{breaker="${escapeLabelValue(name)}"} ${breakerStateToGaugeValue(state)}`,
+    );
+  }
+
+  lines.push('# HELP scout_off_circuit_breaker_transitions_total Total circuit breaker state transitions by target state');
+  lines.push('# TYPE scout_off_circuit_breaker_transitions_total counter');
+  for (const name of breakerNames) {
+    const counts = circuitBreakerTransitionsStore[name] ?? { closed: 0, 'half-open': 0, open: 0 };
+    for (const to of ['closed', 'half-open', 'open'] as const) {
+      lines.push(
+        `scout_off_circuit_breaker_transitions_total{breaker="${escapeLabelValue(name)}",to="${to}"} ${counts[to]}`,
+      );
+    }
+  }
 
   return lines.join('\n') + '\n';
 }

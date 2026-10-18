@@ -156,3 +156,77 @@ describe('checkHealth — breaker awareness', () => {
     );
   });
 });
+
+describe('circuit breaker Prometheus metrics (#1573)', () => {
+  it('exports scout_off_circuit_breaker_state and scout_off_circuit_breaker_transitions_total across open, half-open, and closed transitions', async () => {
+    const {
+      resetMetrics,
+      registerBreaker,
+      serializeMetrics,
+      getCircuitBreakerTransitions,
+    } = await import('../../src/middleware/metrics');
+    const { CircuitBreaker, stellarBreaker } = await import('../../src/utils/circuitBreaker');
+
+    resetMetrics();
+    ipfsBreaker.reset();
+    stellarBreaker.reset();
+    registerBreaker(ipfsBreaker);
+    registerBreaker(stellarBreaker);
+
+    // Initially both breakers are closed (0)
+    let text = serializeMetrics();
+    expect(text).toContain('# TYPE scout_off_circuit_breaker_state gauge');
+    expect(text).toContain('scout_off_circuit_breaker_state{breaker="ipfs"} 0');
+    expect(text).toContain('scout_off_circuit_breaker_state{breaker="stellar"} 0');
+
+    // Trip ipfsBreaker open (5 failures) -> gauge reads 2 and open transition counter increments
+    mockAxios.post.mockRejectedValue(new Error('Pinata down'));
+    for (let i = 0; i < 5; i++) {
+      await pinJson({}).catch(() => {});
+    }
+    text = serializeMetrics();
+    expect(text).toContain('scout_off_circuit_breaker_state{breaker="ipfs"} 2');
+    expect(text).toContain('scout_off_circuit_breaker_transitions_total{breaker="ipfs",to="open"} 1');
+
+    // Also test full open -> half-open -> closed cycle on a registered breaker with 0ms reset timeout
+    const fastBreaker = new CircuitBreaker({
+      name: 'custom',
+      failureThreshold: 1,
+      resetTimeoutMs: 0,
+    });
+    registerBreaker(fastBreaker);
+
+    await fastBreaker.execute(() => Promise.reject(new Error('boom'))).catch(() => {});
+    // resetTimeoutMs=0 means getState() immediately transitions open -> half-open (1)
+    expect(fastBreaker.getState()).toBe('half-open');
+    text = serializeMetrics();
+    expect(text).toContain('scout_off_circuit_breaker_state{breaker="custom"} 1');
+
+    // Successful probe in half-open transitions half-open -> closed (0)
+    await fastBreaker.execute(() => Promise.resolve('recovered'));
+    text = serializeMetrics();
+    expect(text).toContain('scout_off_circuit_breaker_state{breaker="custom"} 0');
+
+    const transitions = getCircuitBreakerTransitions().custom;
+    expect(transitions).toEqual({
+      open: 1,
+      'half-open': 1,
+      closed: 1,
+    });
+
+    // Also verify stellarBreaker state transitions update its gauge and transition counter
+    stellarBreaker.state = 'OPEN';
+    text = serializeMetrics();
+    expect(text).toContain('scout_off_circuit_breaker_state{breaker="stellar"} 2');
+    expect(text).toContain('scout_off_circuit_breaker_transitions_total{breaker="stellar",to="open"} 1');
+
+    stellarBreaker.state = 'HALF_OPEN';
+    expect(serializeMetrics()).toContain('scout_off_circuit_breaker_state{breaker="stellar"} 1');
+
+    stellarBreaker.state = 'CLOSED';
+    text = serializeMetrics();
+    expect(text).toContain('scout_off_circuit_breaker_state{breaker="stellar"} 0');
+    expect(text).toContain('scout_off_circuit_breaker_transitions_total{breaker="stellar",to="closed"} 1');
+  });
+});
+

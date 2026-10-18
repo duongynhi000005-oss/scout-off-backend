@@ -22,7 +22,8 @@ module.exports = {
     // Catch imports of packages not declared in dependencies/devDependencies.
     // This prevents a repeat of issue #1417 where @envelop/core was used via
     // a transitive dependency without being declared directly.
-    'import/no-extraneous-dependencies': ['error', { devDependencies: ['tests/**/*.ts', 'scripts/**/*.ts', '**/*.test.ts', '**/*.spec.ts'] }]
+    'import/no-extraneous-dependencies': ['error', { devDependencies: ['tests/**/*.ts', 'scripts/**/*.ts', '**/*.test.ts', '**/*.spec.ts'] }],
+    'import/no-duplicates': 'error'
   },
   overrides: [
     {

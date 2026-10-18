@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { getTrialOfferById, respondToTrialOffer, insertTrialOffer, cancelTrialOffer, TrialOfferRow } from '../db';
-import { queryEvents } from '../db';
+import { getTrialOfferById, respondToTrialOffer, insertTrialOffer, cancelTrialOffer, TrialOfferRow , queryEvents } from '../db';
+
 import { logger } from '../utils/logger';
 import { broadcaster } from '../services/eventBroadcaster';
 import config from '../config';

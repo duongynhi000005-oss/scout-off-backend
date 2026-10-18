@@ -4,11 +4,11 @@ initTracing();
 import app, { setDraining } from "./app";
 import config from "./config";
 import { logger } from "./utils/logger";
-import { initDb, closeDb } from "./db";
+import { initDb, closeDb , fetchLastIndexedLedger, persistLastIndexedLedger } from "./db";
 import { stellarHealth } from "./services/stellar";
 import { checkHealth, retryPendingPins, reconcilePendingPins } from "./services/ipfs";
 import { indexEvents } from "./services/indexer";
-import { fetchLastIndexedLedger, persistLastIndexedLedger } from "./db";
+
 import { initBlocklist } from "./services/tokenBlocklist";
 import { startDecayTimer } from "./services/ipReputation";
 import {
@@ -20,8 +20,8 @@ import {
   closeSecurityEventSubscriber,
 } from "./services/securityEventPubSub";
 import { closeRedisClients } from "./services/redis";
-import { runTierDivergenceCheck } from "./services/tierDivergenceJob";
-import { getTierDivergenceTotal } from "./services/tierDivergenceJob";
+import { runTierDivergenceCheck , getTierDivergenceTotal } from "./services/tierDivergenceJob";
+
 import { setTierDivergenceGetter } from "./middleware/metrics";
 import { drainAllSessions, setAcceptingSseSessions } from "./routes/events";
 import http from "http";

@@ -2,7 +2,7 @@ import express from 'express';
 import cors, { CorsOptions } from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
-import config from './config';
+import config, { API_PREFIX, API_V1_PREFIX, API_V2_PREFIX } from './config';
 import authRoutes from './routes/auth';
 import playerRoutes from './routes/player';
 import scoutRoutes from './routes/scout';
@@ -16,10 +16,10 @@ import { traceId } from './middleware/traceId';
 import { responseTime } from './middleware/responseTime';
 import { stellarHealth, stellarBreaker } from './services/stellar';
 import { checkHealth } from './services/ipfs';
-import { API_PREFIX, API_V1_PREFIX, API_V2_PREFIX } from './config';
+
 import { mountGraphQL } from './graphql';
-import { createPersistedOperationsPlugin } from './graphql/persisted-operations';
-import { loadPersistedOperationsFromFile } from './graphql/persisted-operations';
+import { createPersistedOperationsPlugin , loadPersistedOperationsFromFile } from './graphql/persisted-operations';
+
 import { ErrorCode } from './utils/errorCodes';
 import { metricsMiddleware, createMetricsHandler } from './middleware/metrics';
 import { ipReputationMiddleware } from './middleware/ipReputation';

@@ -214,11 +214,17 @@ try {
       return;
     }
 
+    const VALID_ROLES = new Set(['player', 'scout', 'validator', 'admin']);
     const jti = payload.jti;
     const account = payload.sub;
-    const role = payload.role as string | undefined;
+    const role = payload.role;
 
-    if (!jti || !account) {
+    if (!jti || !account || typeof role !== 'string' || !VALID_ROLES.has(role)) {
+      logger.warn('[auth] refresh_token_malformed', {
+        jti: jti ?? null,
+        account: account ?? null,
+        role: role ?? null,
+      });
       res.status(401).json({
         success: false,
         error: 'Malformed refresh token',
@@ -243,8 +249,8 @@ try {
     await revokeToken(jti, expiresAtSeconds);
 
     // Issue new pair.
-    const { token: newAccessToken, expiresAt } = issueAccessToken(account, role ?? 'player');
-    const { token: newRefreshToken } = issueRefreshToken(account, role ?? 'player');
+    const { token: newAccessToken, expiresAt } = issueAccessToken(account, role);
+    const { token: newRefreshToken } = issueRefreshToken(account, role);
 
     res.json({
       success: true,

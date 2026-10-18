@@ -1,6 +1,5 @@
-import { getFeatureFlag, getAllFeatureFlags, upsertFeatureFlag, getDb } from '../db';
+import { getFeatureFlag, getAllFeatureFlags, upsertFeatureFlag } from '../db';
 import { logAuditEvent } from './audit';
-import { logger } from '../utils/logger';
 
 /** Named feature flags. Add new constants here as features are gated. */
 export const FeatureFlags = {
@@ -27,29 +26,21 @@ export interface FeatureFlagContext {
   account?: string;
 }
 
-const cache = new Map<string, boolean>();
+interface CacheEntry {
+  value: boolean;
+  expiresAt: number;
+}
+
+const cache = new Map<string, CacheEntry>();
+
+function cacheTtlMs(): number {
+  const ttl = parseInt(process.env.FEATURE_FLAG_CACHE_TTL_MS ?? '5000', 10);
+  return Number.isFinite(ttl) && ttl > 0 ? ttl : 5000;
+}
 
 /** Clear the in-memory cache (used in tests). */
 export function clearFeatureFlagCache(): void {
   cache.clear();
-}
-
-// ─── Synchronous flag reads (#1126) ──────────────────────────────────────────
-//
-// The /graphql mount guard runs on every request and needs a plain boolean
-// with no await. `isEnabled()` reads the feature_flags table synchronously via
-// the better-sqlite3 handle, with a short TTL cache and a defaults fallback so
-// it is safe to call before the DB is initialised (returns the default) and on
-// the postgres driver (getDb() throws → default).
-
-interface SyncCacheEntry {
-  value: boolean;
-  expiresAt: number;
-}
-const syncCache = new Map<string, SyncCacheEntry>();
-
-function syncCacheTtlMs(): number {
-  return parseInt(process.env.FEATURE_FLAG_CACHE_TTL_MS ?? '5000', 10);
 }
 
 /** No-op bootstrap kept for backwards compatibility — the feature_flags table
@@ -59,52 +50,50 @@ export function bootstrapFeatureFlags(): void {
 }
 
 /**
- * Synchronously read a feature flag. Prefer {@link isFeatureEnabled} on
- * request paths that can await; this exists for the per-request /graphql guard.
+ * Synchronously read a cached feature flag snapshot without touching getDb().
+ * Prefer {@link isFeatureEnabled} on request paths that can await (#1516).
  */
 export function isEnabled(key: string): boolean {
   const now = Date.now();
-  const cached = syncCache.get(key);
+  const cached = cache.get(key);
   if (cached && cached.expiresAt > now) {
     return cached.value;
   }
-
-  let value = FLAG_DEFAULTS[key] ?? false;
-  try {
-    const row = getDb()
-      .prepare('SELECT enabled FROM feature_flags WHERE name = ?')
-      .get(key) as { enabled: number } | undefined;
-    if (row !== undefined) {
-      value = row.enabled !== 0;
-    }
-  } catch {
-    // DB not initialised (tests) or non-sqlite driver — fall back to defaults.
-  }
-
-  syncCache.set(key, { value, expiresAt: now + syncCacheTtlMs() });
-  return value;
+  return cached?.value ?? FLAG_DEFAULTS[key] ?? false;
 }
 
-/** Flush the synchronous flag cache. Used in tests. */
+/** Flush the flag cache. Used in tests. */
 export function clearFlagCache(): void {
-  syncCache.clear();
+  cache.clear();
 }
 
 /**
  * Returns whether a named feature flag is enabled.
- * Reads from an in-process cache that is refreshed on admin updates.
+ * Reads through the driver-agnostic DB helpers (works on SQLite and Postgres)
+ * and caches the result in-process with TTL.
  */
 export async function isFeatureEnabled(
   flagName: string,
   _context?: FeatureFlagContext,
 ): Promise<boolean> {
-  if (cache.has(flagName)) {
-    return cache.get(flagName)!;
+  const now = Date.now();
+  const cached = cache.get(flagName);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
   }
 
-  const row = await getFeatureFlag(flagName);
-  const enabled = row?.enabled === 1;
-  cache.set(flagName, enabled);
+  let enabled = FLAG_DEFAULTS[flagName] ?? false;
+  try {
+    const row = await getFeatureFlag(flagName);
+    if (row !== undefined && row !== null) {
+      enabled = row.enabled === 1;
+    }
+  } catch {
+    // DB not initialised yet — fall back to defaults without caching failure.
+    return enabled;
+  }
+
+  cache.set(flagName, { value: enabled, expiresAt: now + cacheTtlMs() });
   return enabled;
 }
 
@@ -125,7 +114,7 @@ export async function setFeatureFlag(
     updated_at: Date.now(),
     updated_by: updatedBy,
   });
-  cache.set(flagName, enabled);
+  cache.set(flagName, { value: enabled, expiresAt: Date.now() + cacheTtlMs() });
 
   await logAuditEvent({
     action: 'feature_flag_toggled',

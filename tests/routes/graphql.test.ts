@@ -1,13 +1,13 @@
 /**
  * Tests for the graphql_enabled feature flag gating of the /graphql endpoint.
  *
- * The flag is read dynamically per request via src/services/featureFlags.
- * We mock isEnabled so tests don't need a real DB.
+ * The flag is read dynamically per request via src/services/featureFlags
+ * using the driver-agnostic async `isFeatureEnabled()` (#1516).
  */
 
 jest.mock('../../src/services/featureFlags', () => ({
   ...jest.requireActual('../../src/services/featureFlags'),
-  isEnabled: jest.fn(),
+  isFeatureEnabled: jest.fn(),
   bootstrapFeatureFlags: jest.fn(),
   GRAPHQL_ENABLED: 'graphql_enabled',
 }));
@@ -25,24 +25,25 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import app from '../../src/app';
 import * as featureFlags from '../../src/services/featureFlags';
+import * as db from '../../src/db';
 import config from '../../src/config';
 import { mountGraphQL } from '../../src/graphql';
 
-const mockIsEnabled = featureFlags.isEnabled as jest.Mock;
+const mockIsFeatureEnabled = featureFlags.isFeatureEnabled as jest.Mock;
 
 describe('GET /graphql — feature flag gating', () => {
   afterEach(() => {
-    mockIsEnabled.mockReset();
+    mockIsFeatureEnabled.mockReset();
   });
 
   it('returns 404 when graphql_enabled flag is OFF', async () => {
-    mockIsEnabled.mockReturnValue(false);
+    mockIsFeatureEnabled.mockResolvedValue(false);
     const res = await request(app).get('/graphql');
     expect(res.status).toBe(404);
   });
 
   it('does not expose a GraphQL schema when flag is OFF', async () => {
-    mockIsEnabled.mockReturnValue(false);
+    mockIsFeatureEnabled.mockResolvedValue(false);
     const res = await request(app)
       .post('/graphql')
       .send({ query: '{ __schema { types { name } } }' })
@@ -51,30 +52,28 @@ describe('GET /graphql — feature flag gating', () => {
   });
 
   it('forwards to GraphQL handler (returns non-404) when flag is ON', async () => {
-    mockIsEnabled.mockReturnValue(true);
+    mockIsFeatureEnabled.mockResolvedValue(true);
     const res = await request(app)
       .post('/graphql')
       .send({ query: '{ __typename }' })
       .set('Content-Type', 'application/json');
-    // The stub handler returns 501 when the real yoga is not installed;
-    // the important assertion is that the flag guard did NOT short-circuit to 404.
     expect(res.status).not.toBe(404);
   });
 
-  it('calls isEnabled with the GRAPHQL_ENABLED key on each request', async () => {
-    mockIsEnabled.mockReturnValue(false);
+  it('calls isFeatureEnabled with the GRAPHQL_ENABLED key on each request', async () => {
+    mockIsFeatureEnabled.mockResolvedValue(false);
     await request(app).get('/graphql');
-    expect(mockIsEnabled).toHaveBeenCalledWith('graphql_enabled');
+    expect(mockIsFeatureEnabled).toHaveBeenCalledWith('graphql_enabled');
   });
 });
 
 describe('POST /graphql — feature flag gating', () => {
   afterEach(() => {
-    mockIsEnabled.mockReset();
+    mockIsFeatureEnabled.mockReset();
   });
 
   it('returns 404 for POST when flag is OFF', async () => {
-    mockIsEnabled.mockReturnValue(false);
+    mockIsFeatureEnabled.mockResolvedValue(false);
     const res = await request(app)
       .post('/graphql')
       .send({ query: '{ __typename }' })
@@ -92,7 +91,7 @@ describe('GraphQL rate limiting', () => {
       const rateLimitedApp = express();
       rateLimitedApp.set('trust proxy', true);
       rateLimitedApp.use(express.json());
-      mockIsEnabled.mockReturnValue(true);
+      mockIsFeatureEnabled.mockResolvedValue(true);
       mountGraphQL(rateLimitedApp);
 
       const ip = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
@@ -137,19 +136,84 @@ describe('GraphQL rate limiting', () => {
   });
 });
 
-describe('featureFlags service unit tests', () => {
-  const { isEnabled: realIsEnabled, clearFlagCache } =
-    jest.requireActual<typeof import('../../src/services/featureFlags')>(
-      '../../src/services/featureFlags',
-    );
+describe('featureFlags service unit tests (#1516)', () => {
+  const {
+    isEnabled: realIsEnabled,
+    isFeatureEnabled: realIsFeatureEnabled,
+    setFeatureFlag: realSetFeatureFlag,
+    clearFlagCache,
+  } = jest.requireActual<typeof import('../../src/services/featureFlags')>(
+    '../../src/services/featureFlags',
+  );
 
   beforeEach(() => {
     clearFlagCache();
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+    clearFlagCache();
+  });
+
   it('returns false for graphql_enabled by default (no DB)', () => {
-    // With no DB initialised the service falls back to DEFAULTS (false)
     const result = realIsEnabled('graphql_enabled');
     expect(result).toBe(false);
   });
+
+  it('serves /graphql under DB_DRIVER=postgres when graphql_enabled=1 without calling getDb()', async () => {
+    // Simulate Postgres mode where synchronous getDb() throws, while async getFeatureFlag works
+    jest.spyOn(db, 'getDb').mockImplementation(() => {
+      throw new Error('getDb() is only available with DB_DRIVER=sqlite');
+    });
+    const getFeatureFlagSpy = jest.spyOn(db, 'getFeatureFlag').mockResolvedValue({
+      name: 'graphql_enabled',
+      enabled: 1,
+      updated_at: Date.now(),
+      updated_by: 'admin',
+    });
+
+    mockIsFeatureEnabled.mockImplementation((key: string) => realIsFeatureEnabled(key));
+
+    const res1 = await request(app)
+      .post('/graphql')
+      .send({ query: '{ __typename }' })
+      .set('Content-Type', 'application/json');
+    expect(res1.status).toBe(200);
+    expect(getFeatureFlagSpy).toHaveBeenCalledTimes(1);
+
+    // Second request hits the in-process cache with zero DB I/O
+    const res2 = await request(app)
+      .post('/graphql')
+      .send({ query: '{ __typename }' })
+      .set('Content-Type', 'application/json');
+    expect(res2.status).toBe(200);
+    expect(getFeatureFlagSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('toggling graphql_enabled via setFeatureFlag takes effect immediately on the next request', async () => {
+    jest.spyOn(db, 'getFeatureFlag').mockResolvedValue({
+      name: 'graphql_enabled',
+      enabled: 0,
+      updated_at: Date.now(),
+      updated_by: 'seed',
+    });
+    jest.spyOn(db, 'upsertFeatureFlag').mockResolvedValue(undefined);
+    mockIsFeatureEnabled.mockImplementation((key: string) => realIsFeatureEnabled(key));
+
+    const beforeRes = await request(app)
+      .post('/graphql')
+      .send({ query: '{ __typename }' })
+      .set('Content-Type', 'application/json');
+    expect(beforeRes.status).toBe(404);
+
+    await realSetFeatureFlag('graphql_enabled', true, 'admin-wallet');
+    expect(realIsEnabled('graphql_enabled')).toBe(true);
+
+    const afterRes = await request(app)
+      .post('/graphql')
+      .send({ query: '{ __typename }' })
+      .set('Content-Type', 'application/json');
+    expect(afterRes.status).toBe(200);
+  });
 });
+

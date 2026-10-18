@@ -119,7 +119,7 @@ async function startServer() {
     };
   }
 
-  // Poll for new contract events every 5 seconds
+  // Poll for new contract events on a configurable interval (default: 5 seconds)
   const poll = withJobTracking(async () => {
     try {
       await indexEvents();
@@ -129,7 +129,7 @@ async function startServer() {
   });
 
   poll();
-  const pollInterval = setInterval(poll, 5_000);
+  const pollInterval = setInterval(poll, config.indexerPollIntervalMs);
 
   // Poll for IPFS retries every 30 seconds
   const retryPins = withJobTracking(async () => {

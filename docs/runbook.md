@@ -23,8 +23,10 @@ Start every investigation with the health and metrics endpoints:
 behind the chain tip after the last poll. It is exposed as
 `indexer_ledger_lag` on `/metrics` and a warning is logged when it exceeds
 `INDEXER_LAG_WARN_THRESHOLD` (default `100`). Small, transient lag is normal
-(polls run every 5 s, and `INDEXER_FINALITY_MARGIN` — default `10` ledgers —
-intentionally treats the tip as non-final); persistent three-figure lag is not.
+(polls run every `INDEXER_POLL_INTERVAL_MS` — default `5000` ms / 5 s, matching
+Stellar's ~5 s ledger close time — and `INDEXER_FINALITY_MARGIN` — default `10`
+ledgers — intentionally treats the tip as non-final); persistent three-figure
+lag is not.
 
 ## Incident → action
 

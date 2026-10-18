@@ -361,6 +361,7 @@ describe('parseNumericEnv validation', () => {
     'EVIDENCE_MAX_BYTES',
     'ADMIN_ACTION_TTL_MS',
     'COMPRESSION_THRESHOLD',
+    'INDEXER_POLL_INTERVAL_MS',
   ];
 
   beforeEach(() => {
@@ -649,4 +650,34 @@ describe('parseNumericEnv validation', () => {
     expect(cfg.compressionThresholdBytes).toBe(512);
     delete process.env.COMPRESSION_THRESHOLD_BYTES;
   });
+
+  // ── INDEXER_POLL_INTERVAL_MS ─────────────────────────────────────────────────
+
+  it('INDEXER_POLL_INTERVAL_MS: defaults to 5000 when unset', async () => {
+    delete process.env.INDEXER_POLL_INTERVAL_MS;
+    const cfg = await loadConfig();
+    expect(cfg.indexerPollIntervalMs).toBe(5000);
+  });
+
+  it('INDEXER_POLL_INTERVAL_MS: valid value 10000 loads without error', async () => {
+    process.env.INDEXER_POLL_INTERVAL_MS = '10000';
+    const cfg = await loadConfig();
+    expect(cfg.indexerPollIntervalMs).toBe(10000);
+  });
+
+  it('INDEXER_POLL_INTERVAL_MS: non-numeric string throws naming INDEXER_POLL_INTERVAL_MS', async () => {
+    process.env.INDEXER_POLL_INTERVAL_MS = 'not-a-number';
+    await expectThrowsContaining('INDEXER_POLL_INTERVAL_MS');
+  });
+
+  it('INDEXER_POLL_INTERVAL_MS: 999 is below min (1000) and throws naming INDEXER_POLL_INTERVAL_MS', async () => {
+    process.env.INDEXER_POLL_INTERVAL_MS = '999';
+    await expectThrowsContaining('INDEXER_POLL_INTERVAL_MS');
+  });
+
+  it('INDEXER_POLL_INTERVAL_MS: 300001 exceeds max (300000) and throws naming INDEXER_POLL_INTERVAL_MS', async () => {
+    process.env.INDEXER_POLL_INTERVAL_MS = '300001';
+    await expectThrowsContaining('INDEXER_POLL_INTERVAL_MS');
+  });
 });
+

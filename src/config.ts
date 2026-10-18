@@ -764,6 +764,8 @@ const config = {
   reindexRateLimitBackoffMs: parseNumericEnv('REINDEX_RATE_LIMIT_BACKOFF_MS', process.env.REINDEX_RATE_LIMIT_BACKOFF_MS, 2000, { min: 1, integer: true }),
 
   // ── Indexer settings ──────────────────────────────────────────────────
+  /** Poll interval for the contract event indexer in milliseconds (default: 5s). */
+  indexerPollIntervalMs: parseNumericEnv('INDEXER_POLL_INTERVAL_MS', process.env.INDEXER_POLL_INTERVAL_MS, 5000, { min: 1000, max: 300000, integer: true }),
   /** Finality margin: ledgers to hold back from tip to avoid reorgs. */
   indexerFinalityMargin: parseNumericEnv('INDEXER_FINALITY_MARGIN', process.env.INDEXER_FINALITY_MARGIN, 10, { min: 1, integer: true }),
   /** Ledger lag threshold before warning logs are emitted. */

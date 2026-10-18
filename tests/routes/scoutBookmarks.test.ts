@@ -11,6 +11,7 @@
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import app from '../../src/app';
+import { generateApiKey } from '../../src/controllers/apiKeyController';
 
 const SECRET = process.env.JWT_SECRET ?? 'test-secret';
 
@@ -38,6 +39,9 @@ jest.mock('../../src/db', () => ({
   revokeApiKeyById: jest.fn(),
   getApiKeyByHash: jest.fn().mockReturnValue(null),
   getAllActiveApiKeys: jest.fn().mockReturnValue([]),
+  getActiveApiKeyByLookupHash: jest.fn().mockReturnValue(null),
+  getActiveApiKeysAwaitingLookupHash: jest.fn().mockReturnValue([]),
+  setApiKeyLookupHash: jest.fn(),
   touchApiKeyLastUsed: jest.fn().mockResolvedValue(undefined),
   // bookmarks
   insertBookmark: jest.fn(),
@@ -48,6 +52,7 @@ jest.mock('../../src/db', () => ({
   getBookmarkFoldersByScout: jest.fn(),
   getBookmarkFolderById: jest.fn(),
   deleteBookmarkFolder: jest.fn(),
+  renameBookmarkFolder: jest.fn(),
   moveBookmarksToRoot: jest.fn(),
   countBookmarksInFolder: jest.fn(),
 }));
@@ -81,8 +86,10 @@ import {
   getBookmarkFoldersByScout,
   getBookmarkFolderById,
   deleteBookmarkFolder,
+  renameBookmarkFolder,
   moveBookmarksToRoot,
   countBookmarksInFolder,
+  getActiveApiKeyByLookupHash,
 } from '../../src/db';
 
 const mockGetPlayerById        = getPlayerById        as jest.Mock;
@@ -94,8 +101,10 @@ const mockInsertBookmarkFolder = insertBookmarkFolder as jest.Mock;
 const mockGetBookmarkFolders   = getBookmarkFoldersByScout as jest.Mock;
 const mockGetBookmarkFolderById = getBookmarkFolderById as jest.Mock;
 const mockDeleteBookmarkFolder = deleteBookmarkFolder as jest.Mock;
+const mockRenameBookmarkFolder = renameBookmarkFolder as jest.Mock;
 const mockMoveBookmarksToRoot  = moveBookmarksToRoot  as jest.Mock;
 const mockCountBookmarksInFolder = countBookmarksInFolder as jest.Mock;
+const mockGetActiveApiKeyByLookupHash = getActiveApiKeyByLookupHash as jest.Mock;
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -586,3 +595,141 @@ describe('DELETE /api/scouts/:wallet/bookmark-folders/:folderId', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('PATCH /api/scouts/:wallet/bookmark-folders/:folderId', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('renames a folder owned by the caller and returns 200', async () => {
+    mockGetBookmarkFolderById.mockReturnValueOnce({
+      id: 1,
+      scout_wallet: SCOUT_A,
+      name: 'Old Name',
+      created_at: 1_700_000_000,
+    });
+    mockGetBookmarkFolders.mockReturnValueOnce([
+      { id: 1, scout_wallet: SCOUT_A, name: 'Old Name', created_at: 1_700_000_000 },
+    ]);
+    mockRenameBookmarkFolder.mockReturnValueOnce(true);
+
+    const res = await request(app)
+      .patch(`/api/scouts/${SCOUT_A}/bookmark-folders/1`)
+      .send({ name: 'Top Prospects' })
+      .set('Authorization', `Bearer ${scoutAToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toEqual({
+      id: 1,
+      scout_wallet: SCOUT_A,
+      name: 'Top Prospects',
+      created_at: 1_700_000_000,
+    });
+    expect(mockRenameBookmarkFolder).toHaveBeenCalledWith(1, SCOUT_A, 'Top Prospects');
+  });
+
+  it('returns 404 when folder does not exist or belongs to another scout', async () => {
+    mockGetBookmarkFolderById.mockReturnValueOnce(null);
+
+    const res = await request(app)
+      .patch(`/api/scouts/${SCOUT_A}/bookmark-folders/999`)
+      .send({ name: 'New Name' })
+      .set('Authorization', `Bearer ${scoutAToken}`);
+
+    expect(res.status).toBe(404);
+    expect(mockRenameBookmarkFolder).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when another folder owned by the scout already has the same name', async () => {
+    mockGetBookmarkFolderById.mockReturnValueOnce({
+      id: 1,
+      scout_wallet: SCOUT_A,
+      name: 'Old Name',
+      created_at: 1_700_000_000,
+    });
+    mockGetBookmarkFolders.mockReturnValueOnce([
+      { id: 1, scout_wallet: SCOUT_A, name: 'Old Name', created_at: 1_700_000_000 },
+      { id: 2, scout_wallet: SCOUT_A, name: 'Watchlist', created_at: 1_700_000_010 },
+    ]);
+
+    const res = await request(app)
+      .patch(`/api/scouts/${SCOUT_A}/bookmark-folders/1`)
+      .send({ name: 'Watchlist' })
+      .set('Authorization', `Bearer ${scoutAToken}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(mockRenameBookmarkFolder).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when the database raises a unique constraint error', async () => {
+    mockGetBookmarkFolderById.mockReturnValueOnce({
+      id: 1,
+      scout_wallet: SCOUT_A,
+      name: 'Old Name',
+      created_at: 1_700_000_000,
+    });
+    mockGetBookmarkFolders.mockReturnValueOnce([]);
+    mockRenameBookmarkFolder.mockRejectedValueOnce(
+      Object.assign(new Error('UNIQUE constraint failed: scout_bookmark_folders.scout_wallet, scout_bookmark_folders.name'), {
+        code: 'SQLITE_CONSTRAINT_UNIQUE',
+      }),
+    );
+
+    const res = await request(app)
+      .patch(`/api/scouts/${SCOUT_A}/bookmark-folders/1`)
+      .send({ name: 'Watchlist' })
+      .set('Authorization', `Bearer ${scoutAToken}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('returns 400 when name is missing or invalid', async () => {
+    const res = await request(app)
+      .patch(`/api/scouts/${SCOUT_A}/bookmark-folders/1`)
+      .send({ name: '' })
+      .set('Authorization', `Bearer ${scoutAToken}`);
+
+    expect(res.status).toBe(400);
+    expect(mockRenameBookmarkFolder).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 for cross-wallet rename', async () => {
+    const res = await request(app)
+      .patch(`/api/scouts/${SCOUT_A}/bookmark-folders/1`)
+      .send({ name: 'Renamed' })
+      .set('Authorization', `Bearer ${scoutBToken}`);
+
+    expect(res.status).toBe(403);
+    expect(mockRenameBookmarkFolder).not.toHaveBeenCalled();
+  });
+
+  it('enforces the write:bookmarks API-key scope', async () => {
+    const { key, keyHash, lookupHash } = generateApiKey();
+    mockGetActiveApiKeyByLookupHash.mockReturnValueOnce({
+      id: 42,
+      key_hash: keyHash,
+      lookup_hash: lookupHash,
+      scout_wallet: SCOUT_A,
+      label: 'read-only-key',
+      created_at: 1_700_000_000,
+      last_used_at: null,
+      revoked_at: null,
+      revoke_after: null,
+      expires_at: null,
+      scopes: JSON.stringify(['read:bookmarks']),
+      rate_limit_per_minute: null,
+    });
+
+    const res = await request(app)
+      .patch(`/api/scouts/${SCOUT_A}/bookmark-folders/1`)
+      .send({ name: 'Renamed' })
+      .set('X-API-Key', key);
+
+    expect(res.status).toBe(403);
+    expect(res.body.reason?.requiredScope).toBe('write:bookmarks');
+    expect(mockRenameBookmarkFolder).not.toHaveBeenCalled();
+  });
+});
+
+

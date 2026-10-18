@@ -17,6 +17,7 @@ import {
   getBookmarkFoldersByScout,
   getBookmarkFolderById,
   deleteBookmarkFolder,
+  renameBookmarkFolder,
   moveBookmarksToRoot,
   countBookmarksInFolder,
   ScoutBookmarkRow,
@@ -42,6 +43,8 @@ export const createBookmarkFolderSchema = z.object({
     .min(1, 'name is required and must be a string')
     .max(100),
 }).strict();
+
+export const renameBookmarkFolderSchema = createBookmarkFolderSchema;
 
 // ─── Serialization (mirrors filterPlayers in playerController.ts) ─────────────
 
@@ -281,3 +284,91 @@ export async function deleteBookmarkFolderHandler(
 
   res.json({ success: true, data: { deleted: true, folder_id: folderIdNum } });
 }
+
+/**
+ * PATCH /api/scouts/:wallet/bookmark-folders/:folderId
+ *
+ * Rename a bookmark folder owned by the authenticated scout.
+ * Body: { name: string }
+ * Returns 200 with the updated folder, 404 when the folder does not exist or
+ * belongs to another scout, and 409 when another folder owned by the scout
+ * already uses the requested name.
+ */
+export async function renameBookmarkFolderHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  const { folderId } = req.params as { folderId: string };
+  const folderIdNum = parseInt(folderId, 10);
+
+  if (isNaN(folderIdNum)) {
+    res.status(400).json({ success: false, error: 'Invalid folderId' });
+    return;
+  }
+
+  const { name } = req.body;
+  if (!name || typeof name !== 'string') {
+    res.status(400).json({ success: false, error: 'name is required and must be a string' });
+    return;
+  }
+
+  const wallet = req.params.wallet as string;
+  const folder = await getBookmarkFolderById(folderIdNum, wallet);
+  if (!folder) {
+    res.status(404).json({ success: false, error: 'Folder not found' });
+    return;
+  }
+
+  const existingFolders = await getBookmarkFoldersByScout(wallet);
+  if (
+    Array.isArray(existingFolders) &&
+    existingFolders.some((f) => f.id !== folderIdNum && f.name === name)
+  ) {
+    res.status(409).json({
+      success: false,
+      error: 'A bookmark folder with this name already exists',
+      code: 'CONFLICT',
+    });
+    return;
+  }
+
+  try {
+    const updated = await renameBookmarkFolder(folderIdNum, wallet, name);
+    if (!updated) {
+      res.status(404).json({ success: false, error: 'Folder not found' });
+      return;
+    }
+  } catch (err) {
+    const code = (err as { code?: string })?.code;
+    const message = err instanceof Error ? err.message : String(err);
+    if (
+      code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+      code === 'SQLITE_CONSTRAINT' ||
+      code === '23505' ||
+      /unique|duplicate|conflict/i.test(message)
+    ) {
+      res.status(409).json({
+        success: false,
+        error: 'A bookmark folder with this name already exists',
+        code: 'CONFLICT',
+      });
+      return;
+    }
+    next(err);
+    return;
+  }
+
+  logger.info({ scout: wallet, folderId: folderIdNum, name, action: 'folder_renamed' });
+
+  res.status(200).json({
+    success: true,
+    data: {
+      id: folder.id ?? folderIdNum,
+      scout_wallet: folder.scout_wallet ?? wallet,
+      name,
+      created_at: folder.created_at,
+    },
+  });
+}
+

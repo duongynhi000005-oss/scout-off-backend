@@ -2701,6 +2701,22 @@ export async function deleteBookmarkFolder(folderId: number, scoutWallet: string
 }
 
 /**
+ * Rename a bookmark folder by id, ensuring it belongs to the scout.
+ * Returns true when a row was updated, false when it did not exist.
+ */
+export async function renameBookmarkFolder(
+  folderId: number,
+  scoutWallet: string,
+  name: string,
+): Promise<boolean> {
+  const sql = `UPDATE scout_bookmark_folders SET name = ? WHERE id = ? AND scout_wallet = ?`;
+  return timedQueryAsync(sql, async () => {
+    const info = await getDriver().run(sql, [name, folderId, scoutWallet]);
+    return info.changes > 0;
+  });
+}
+
+/**
  * Move bookmarks from a folder to root (set folder_id to NULL) when folder is deleted.
  */
 export async function moveBookmarksToRoot(folderId: number, scoutWallet: string): Promise<void> {

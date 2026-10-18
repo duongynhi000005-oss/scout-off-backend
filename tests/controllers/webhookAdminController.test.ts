@@ -3,6 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 import { listDeadLetters, replayDeadLetter } from '../../src/controllers/webhookAdminController';
 import {
   createWebhookSubscription,
+  deleteWebhookSubscription,
   insertWebhookDeadLetter,
   getWebhookDeadLetterById,
   markWebhookDeadLetterReplayed,
@@ -212,6 +213,39 @@ describe('replayDeadLetter', () => {
     await replayDeadLetter(req, res, next);
 
     expect(res.status).toHaveBeenCalledWith(409);
+    expect(mockedFetch).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 and does not attempt unsigned delivery when the originating subscription was deleted (#690)', async () => {
+    const url = uniqueUrl('deleted-sub');
+    const scoutWallet = 'G' + 'S'.repeat(55);
+    const sub = createWebhookSubscription(url, 'deleted-sub-secret', scoutWallet);
+    const deadLetter = insertWebhookDeadLetter({
+      subscriptionId: sub.id,
+      url,
+      eventType: 'player_registered',
+      payload: JSON.stringify({ deliveryId: 'del-deleted-sub-001', eventType: 'player_registered', payload: {} }),
+      deliveryId: 'del-deleted-sub-001',
+      failureReason: 'original failure',
+      attempts: 3,
+    });
+
+    expect(deleteWebhookSubscription(sub.id, scoutWallet)).toBe(true);
+
+    const req = { params: { id: String(deadLetter.id) } } as unknown as Request;
+    const res = mockRes();
+    const next = jest.fn() as NextFunction;
+
+    await replayDeadLetter(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        error: expect.stringMatching(/subscription no longer exists/i),
+      }),
+    );
     expect(mockedFetch).not.toHaveBeenCalled();
   });
 });

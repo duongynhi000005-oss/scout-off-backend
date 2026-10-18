@@ -100,12 +100,20 @@ try {
       subscriptions.find((s) => s.id === deadLetter.subscription_id) ??
       subscriptions.find((s) => s.url === deadLetter.url);
 
+    if (!subscription || !subscription.secret) {
+      res.status(409).json({
+        success: false,
+        error: 'Originating webhook subscription no longer exists or has no signing secret',
+      });
+      return;
+    }
+
     try {
       await postWebhookWithRetry(deadLetter.url, JSON.parse(deadLetter.payload), {
         retries: 3,
         baseDelayMs: 500,
         maxDelayMs: 5000,
-        secret: subscription?.secret,
+        secret: subscription.secret,
       });
 
       markWebhookDeadLetterReplayed(id);

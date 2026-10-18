@@ -201,6 +201,20 @@ describe('POST /api/admin/webhooks/dead-letters/:id/requeue', () => {
       .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(400);
   });
+
+  it('returns 409 and does not send unsigned delivery when originating subscription was deleted (#690)', async () => {
+    mockGetById.mockReturnValue(makeLetter({ subscription_id: 999, url: 'https://deleted.example.com/hook' }));
+    mockListSubs.mockReturnValue([]);
+
+    const res = await request(app)
+      .post('/api/admin/webhooks/dead-letters/42/requeue')
+      .set('Authorization', `Bearer ${adminToken()}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toMatch(/subscription no longer exists/i);
+    expect(mockPost).not.toHaveBeenCalled();
+  });
 });
 
 describe('DELETE /api/admin/webhooks/dead-letters/:id', () => {

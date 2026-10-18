@@ -138,12 +138,23 @@ export async function runDeadLetterRetryJob(): Promise<number> {
       subscriptions.find((s) => s.id === claimed.subscription_id) ??
       subscriptions.find((s) => s.url === claimed.url);
 
+    if (!subscription || !subscription.secret) {
+      const failureReason = 'Originating webhook subscription no longer exists or has no signing secret';
+      const newAttempts = claimed.attempts + 1;
+      updateWebhookDeadLetterAttempt(claimed.id, newAttempts, failureReason);
+      releaseWebhookDeadLetterClaim(claimed.id);
+      logger.warn(
+        `[webhooks] dead-letter auto-retry skipped — id=${claimed.id} url=${claimed.url} reason=${failureReason}`,
+      );
+      continue;
+    }
+
     try {
       await postWebhookWithRetry(claimed.url, JSON.parse(claimed.payload), {
         retries: 2,
         baseDelayMs: 500,
         maxDelayMs: 5000,
-        secret: subscription?.secret,
+        secret: subscription.secret,
       });
 
       markWebhookDeadLetterReplayed(claimed.id);

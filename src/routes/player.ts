@@ -347,9 +347,9 @@ router.route("/:playerId/tokens")
  * @response 200 { success: true, data: { playerId, buyerWallet, amount, newBalance } }
  * @response 400 { success: false, error: string } - Invalid amount
  * @response 401 { success: false, error: string } - Authentication required
- * @response 403 { success: false, error: string } - buyerWallet does not match authenticated account
+ * @response 403 { success: false, error: string } - Scout role required or buyerWallet does not match authenticated account
  * @response 404 { success: false, error: string } - Feature flag disabled or player not found
- * @auth Bearer (scout or player role required)
+ * @auth Bearer (scout role required)
  */
 router.route("/:playerId/tokens/buy")
   .post(requireRole("scout"), requireApiKeyScope("write:player_tokens"), validateBody(buyTokenSchema), buyPlayerToken)

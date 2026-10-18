@@ -3373,7 +3373,7 @@
             "description": "{ success: false, error: string } - Authentication required"
           },
           "403": {
-            "description": "{ success: false, error: string } - buyerWallet does not match authenticated account"
+            "description": "{ success: false, error: string } - Scout role required or buyerWallet does not match authenticated account"
           },
           "404": {
             "description": "{ success: false, error: string } - Feature flag disabled or player not found"

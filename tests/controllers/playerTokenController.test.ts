@@ -6,6 +6,9 @@
  * req/res/next objects so the suite is fast and self-contained.
  */
 
+import request from 'supertest';
+import jwt from 'jsonwebtoken';
+import app from '../../src/app';
 import {
   buyPlayerToken,
   getPlayerTokenHolders,
@@ -14,6 +17,8 @@ import {
 } from '../../src/controllers/playerTokenController';
 import { clearFeatureFlagCache, setFeatureFlag } from '../../src/services/featureFlags';
 import { FeatureFlags } from '../../src/services/featureFlags';
+
+const SECRET = process.env.JWT_SECRET ?? 'test-secret';
 
 // ── Mock helpers ──────────────────────────────────────────────────────────────
 
@@ -377,4 +382,26 @@ describe('playerTokenController', () => {
       expect((callB.res as any).statusCode).toBe(200);
     });
   });
+
+  // ── Route role enforcement (#1579) ──────────────────────────────────────────
+
+  describe('POST /api/players/:playerId/tokens/buy — role enforcement', () => {
+    it('returns 403 for a player-role JWT token', async () => {
+      await _stubSeedTokens('player-role-test', 100);
+      const playerToken = jwt.sign(
+        { sub: 'GAAKO6EK5AIJWZH7ITXBFZTPASYKPY3YVMFVFVD5UDG2C6NUIXTT7BE3', role: 'player' },
+        SECRET,
+        { expiresIn: '1h' },
+      );
+
+      const res = await request(app)
+        .post('/api/players/player-role-test/tokens/buy')
+        .set('Authorization', `Bearer ${playerToken}`)
+        .send({ amount: 5 });
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+    });
+  });
 });
+

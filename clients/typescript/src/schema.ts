@@ -4863,7 +4863,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description { success: false, error: string } - buyerWallet does not match authenticated account */
+            /** @description { success: false, error: string } - Scout role required or buyerWallet does not match authenticated account */
             403: {
                 headers: {
                     [name: string]: unknown;

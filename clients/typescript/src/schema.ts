@@ -4092,7 +4092,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description { token, accessToken, refreshToken, account, expiresAt } */
+            /** @description { success: true, token, accessToken, refreshToken, account, expiresAt } */
             200: {
                 headers: {
                     [name: string]: unknown;

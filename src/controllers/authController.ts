@@ -112,7 +112,7 @@ try {
     const { token: accessToken, expiresAt } = issueAccessToken(account, effectiveRole);
     const { token: refreshToken } = issueRefreshToken(account, effectiveRole);
 
-    res.json({ token: accessToken, accessToken, refreshToken, account, expiresAt });
+    res.json({ success: true, token: accessToken, accessToken, refreshToken, account, expiresAt });
   } catch (err) {
     // Normalise to Error — the SDK can throw DOMException (from the base64
     // decoder) or XdrError which, in some JS environments (e.g. Jest's vm

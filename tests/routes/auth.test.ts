@@ -141,3 +141,31 @@ describe('Cache-Control and Pragma headers on /auth/*', () => {
   });
 });
 
+describe('POST /auth/token — success: true response field (#1577)', () => {
+  it('returns success: true alongside token, accessToken, refreshToken, account, and expiresAt', async () => {
+    const { Keypair, Transaction } = await import('@stellar/stellar-sdk');
+    const kp = Keypair.random();
+
+    const challengeRes = await request(app)
+      .get('/auth/challenge')
+      .query({ account: kp.publicKey() });
+    expect(challengeRes.status).toBe(200);
+
+    const tx = new Transaction(challengeRes.body.challenge, challengeRes.body.networkPassphrase);
+    tx.sign(kp);
+
+    const tokenRes = await request(app)
+      .post('/auth/token')
+      .send({ transaction: tx.toXdr() });
+
+    expect(tokenRes.status).toBe(200);
+    expect(tokenRes.body.success).toBe(true);
+    expect(typeof tokenRes.body.token).toBe('string');
+    expect(tokenRes.body.accessToken).toBe(tokenRes.body.token);
+    expect(typeof tokenRes.body.refreshToken).toBe('string');
+    expect(tokenRes.body.account).toBe(kp.publicKey());
+    expect(typeof tokenRes.body.expiresAt).toBe('number');
+  });
+});
+
+

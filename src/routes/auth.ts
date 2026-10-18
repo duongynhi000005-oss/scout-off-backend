@@ -87,7 +87,7 @@ router.route('/challenge')
  * `player`) is used.
  *
  * @body { transaction: string, role?: 'validator' | 'player' | 'scout' } - Signed challenge XDR
- * @response 200 { token, accessToken, refreshToken, account, expiresAt }
+ * @response 200 { success: true, token, accessToken, refreshToken, account, expiresAt }
  * @response 400 { success: false, error: string } - Invalid body or malformed XDR
  * @response 401 { success: false, error: string } - Invalid signature or expired challenge
  */

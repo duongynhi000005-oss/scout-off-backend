@@ -99,12 +99,16 @@ Successful response:
 
 ```json
 {
+  "success": true,
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "account": "GABC123...",
   "expiresAt": 1710000000
 }
 ```
 
+- `success` is `true` for a valid token exchange (consistent with `/auth/refresh` and `/auth/logout`).
 - `token` is the JWT used for authenticated API requests.
 - `account` is the authenticated Stellar account.
 - `expiresAt` is the UNIX timestamp when the token expires.

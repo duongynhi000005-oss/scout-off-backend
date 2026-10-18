@@ -261,6 +261,11 @@ Key properties:
 - Each refresh token can only be used **once** (rotation). Reuse returns `401`.
 - Refresh tokens carry `type: 'refresh'` in their JWT payload so they cannot
   be used as bearer tokens on API routes.
+- On every `POST /auth/refresh`, the server re-evaluates the wallet's effective
+  role from authoritative server state via `resolveEffectiveRole()`:
+  - `admin` is granted only if the wallet currently matches `ADMIN_WALLET` or `ADMIN_WALLETS`.
+  - `validator` is granted only if the wallet has an active (non-revoked) entry in the validator registry (`getValidatorByWallet`).
+  - If a wallet was removed from the admin config or revoked from the validator registry since the refresh token was issued, the newly issued access and refresh tokens are downgraded to `player` and an `auth_role_downgraded` audit event is recorded.
 - The server never persists refresh tokens — only revoked `jti` values are
   stored (in `revoked_tokens`), keeping server state minimal.
 - All revoked `jti` entries are pruned once their `expires_at` passes.

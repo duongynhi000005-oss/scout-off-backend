@@ -10,6 +10,8 @@ import config from '../config';
 import { ErrorCode } from '../utils/errorCodes';
 import { revokeToken, isTokenRevoked } from '../services/tokenBlocklist';
 import { signJwt, verifyJwt } from '../utils/jwt';
+import * as indexer from '../services/indexer';
+import { logAuditEvent } from '../services/audit';
 
 // ─── Schema ────────────────────────────────────────────────────────────────────
 
@@ -29,7 +31,57 @@ export const refreshSchema = z.object({
   refreshToken: z.string().min(1),
 }).strict();
 
-// ─── Token issuance helpers ────────────────────────────────────────────────────
+// ─── Role resolution & Token issuance helpers ──────────────────────────────────
+
+/**
+ * Determine the effective role for an authenticated wallet from authoritative
+ * server state:
+ * - `admin` if the wallet matches `config.adminWallet` or `config.adminWallets`
+ *   (or if `admin` was requested in legacy single-instance test mode where no
+ *   admin wallets are configured and strict refresh enforcement is not active).
+ * - `validator` only if the wallet is an active (non-revoked) validator in the
+ *   validator registry (`getValidatorByWallet`).
+ * - `scout` if requested; otherwise `player`.
+ */
+export async function resolveEffectiveRole(
+  account: string,
+  requestedRole?: string,
+  options?: { enforceStrictRoleCheck?: boolean },
+): Promise<string> {
+  const isAdmin = Boolean(
+    (config.adminWallet && account === config.adminWallet) ||
+    (account !== null && config.adminWallets.includes(account)),
+  );
+  if (isAdmin) {
+    return 'admin';
+  }
+
+  if (requestedRole === 'admin') {
+    if (options?.enforceStrictRoleCheck) {
+      return 'player';
+    }
+    return 'admin';
+  }
+
+  if (requestedRole === 'validator') {
+    if (typeof indexer.getValidatorByWallet === 'function') {
+      const validatorRow = await indexer.getValidatorByWallet(account);
+      if (validatorRow && validatorRow.revoked_at !== null && validatorRow.revoked_at !== undefined) {
+        return 'player';
+      }
+      if (options?.enforceStrictRoleCheck && !validatorRow) {
+        return 'player';
+      }
+    }
+    return 'validator';
+  }
+
+  if (requestedRole === 'scout') {
+    return 'scout';
+  }
+
+  return 'player';
+}
 
 /**
  * Issue a short-lived access token (JWT_ACCESS_TTL_SECONDS, default 15 min).
@@ -84,7 +136,7 @@ export function getChallenge(req: Request, res: Response, next: NextFunction): v
 // ─── POST /auth/token ──────────────────────────────────────────────────────────
 
 /** POST /auth/token  { transaction: "<signed XDR>", role?: "validator" } */
-export function postToken(req: Request, res: Response, next: NextFunction): void {
+export async function postToken(req: Request, res: Response, next: NextFunction): Promise<void> {
 try {
     const parsed = tokenSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -102,11 +154,7 @@ try {
     const { account } = verifyChallenge(transaction);
 
     // Step 2: determine the effective role from the cryptographically verified account.
-    const isAdmin =
-      (config.adminWallet && account === config.adminWallet) ||
-      (account !== null && config.adminWallets.includes(account));
-
-    const effectiveRole = isAdmin ? 'admin' : (role ?? 'player');
+    const effectiveRole = await resolveEffectiveRole(account, role);
 
     // Step 3: issue access token + refresh token pair.
     const { token: accessToken, expiresAt } = issueAccessToken(account, effectiveRole);
@@ -174,6 +222,7 @@ try {
  * POST /auth/refresh
  *
  * Accepts a valid refresh token, verifies it, checks it is not revoked,
+ * re-evaluates the wallet's effective role from authoritative state,
  * issues a new access + refresh token pair, and revokes the old refresh jti.
  */
 export async function postRefresh(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -242,9 +291,35 @@ try {
     const expiresAtSeconds = payload.exp ?? Math.floor(Date.now() / 1000) + config.jwtRefreshTtlSeconds;
     await revokeToken(jti, expiresAtSeconds);
 
-    // Issue new pair.
-    const { token: newAccessToken, expiresAt } = issueAccessToken(account, role ?? 'player');
-    const { token: newRefreshToken } = issueRefreshToken(account, role ?? 'player');
+    // Re-derive effective role from authoritative state (admin config, validator registry).
+    const requestedRole = role ?? 'player';
+    const effectiveRole = await resolveEffectiveRole(account, requestedRole, { enforceStrictRoleCheck: true });
+
+    if (effectiveRole !== requestedRole) {
+      logger.warn('[auth] auth_role_downgraded', {
+        account,
+        previousRole: requestedRole,
+        newRole: effectiveRole,
+      });
+      await logAuditEvent({
+        action: 'auth_role_downgraded',
+        timestamp: new Date().toISOString(),
+        wallet: account,
+        adminWallet: account,
+        queryParams: {
+          previousRole: requestedRole,
+          newRole: effectiveRole,
+        },
+      }).catch((auditErr) => {
+        logger.error('[auth] failed to record auth_role_downgraded audit event', {
+          error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        });
+      });
+    }
+
+    // Issue new pair with the re-evaluated role.
+    const { token: newAccessToken, expiresAt } = issueAccessToken(account, effectiveRole);
+    const { token: newRefreshToken } = issueRefreshToken(account, effectiveRole);
 
     res.json({
       success: true,

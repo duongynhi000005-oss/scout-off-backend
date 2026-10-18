@@ -65,6 +65,7 @@ jest.mock('../../src/db', () => ({
 jest.mock('../../src/services/indexer', () => ({
   indexEvents: jest.fn(),
   normalizeEventId: jest.fn(),
+  getValidatorByWallet: jest.fn().mockResolvedValue(null),
 }));
 
 jest.mock('../../src/services/ipfs', () => ({
@@ -76,6 +77,10 @@ jest.mock('../../src/services/webhooks', () => ({
   dispatchEventWebhook: jest.fn().mockResolvedValue(undefined),
   postWebhookWithRetry: jest.fn(),
 }));
+
+import config from '../../src/config';
+import * as indexer from '../../src/services/indexer';
+import * as db from '../../src/db';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -215,6 +220,110 @@ describe('POST /auth/refresh', () => {
     expect(second.status).toBe(401);
     expect(second.body.error).toMatch(/revoked/i);
     expect(second.body.code).toBe('TOKEN_INVALID');
+  });
+
+  it('downgrades a demoted admin to player on refresh and logs an audit event', async () => {
+    const origAdminWallet = config.adminWallet;
+    const origAdminWallets = config.adminWallets;
+    try {
+      (config as { adminWallet: string }).adminWallet = 'GCURRENT_ADMIN';
+      (config as { adminWallets: string[] }).adminWallets = ['GCURRENT_ADMIN'];
+      (db.insertAuditLog as jest.Mock).mockClear();
+
+      const refreshToken = makeRefreshToken('GDEMOTED_ADMIN', 'admin');
+      const res = await request(app)
+        .post('/auth/refresh')
+        .send({ refreshToken });
+
+      expect(res.status).toBe(200);
+      const accessDecoded = jwt.decode(res.body.accessToken) as jwt.JwtPayload;
+      const refreshDecoded = jwt.decode(res.body.refreshToken) as jwt.JwtPayload;
+      expect(accessDecoded.role).toBe('player');
+      expect(refreshDecoded.role).toBe('player');
+      expect(db.insertAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'auth_role_downgraded',
+          adminWallet: 'GDEMOTED_ADMIN',
+          queryParams: expect.objectContaining({
+            previousRole: 'admin',
+            newRole: 'player',
+          }),
+        }),
+      );
+    } finally {
+      (config as { adminWallet: string }).adminWallet = origAdminWallet;
+      (config as { adminWallets: string[] }).adminWallets = origAdminWallets;
+    }
+  });
+
+  it('retains admin role on refresh when wallet is still in ADMIN_WALLETS', async () => {
+    const origAdminWallet = config.adminWallet;
+    const origAdminWallets = config.adminWallets;
+    try {
+      (config as { adminWallet: string }).adminWallet = 'GACTIVE_ADMIN';
+      (config as { adminWallets: string[] }).adminWallets = ['GACTIVE_ADMIN'];
+
+      const refreshToken = makeRefreshToken('GACTIVE_ADMIN', 'admin');
+      const res = await request(app)
+        .post('/auth/refresh')
+        .send({ refreshToken });
+
+      expect(res.status).toBe(200);
+      const accessDecoded = jwt.decode(res.body.accessToken) as jwt.JwtPayload;
+      expect(accessDecoded.role).toBe('admin');
+    } finally {
+      (config as { adminWallet: string }).adminWallet = origAdminWallet;
+      (config as { adminWallets: string[] }).adminWallets = origAdminWallets;
+    }
+  });
+
+  it('downgrades a revoked validator to player on refresh and logs an audit event', async () => {
+    (indexer.getValidatorByWallet as jest.Mock).mockResolvedValueOnce({
+      wallet: 'GREVOKED_VAL',
+      registered_at: 1000,
+      revoked_at: 2000,
+      tx_hash: '0xrevoked',
+    });
+    (db.insertAuditLog as jest.Mock).mockClear();
+
+    const refreshToken = makeRefreshToken('GREVOKED_VAL', 'validator');
+    const res = await request(app)
+      .post('/auth/refresh')
+      .send({ refreshToken });
+
+    expect(res.status).toBe(200);
+    const accessDecoded = jwt.decode(res.body.accessToken) as jwt.JwtPayload;
+    const refreshDecoded = jwt.decode(res.body.refreshToken) as jwt.JwtPayload;
+    expect(accessDecoded.role).toBe('player');
+    expect(refreshDecoded.role).toBe('player');
+    expect(db.insertAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'auth_role_downgraded',
+        adminWallet: 'GREVOKED_VAL',
+        queryParams: expect.objectContaining({
+          previousRole: 'validator',
+          newRole: 'player',
+        }),
+      }),
+    );
+  });
+
+  it('retains validator role on refresh when validator is active in registry', async () => {
+    (indexer.getValidatorByWallet as jest.Mock).mockResolvedValueOnce({
+      wallet: 'GACTIVE_VAL',
+      registered_at: 1000,
+      revoked_at: null,
+      tx_hash: '0xactive',
+    });
+
+    const refreshToken = makeRefreshToken('GACTIVE_VAL', 'validator');
+    const res = await request(app)
+      .post('/auth/refresh')
+      .send({ refreshToken });
+
+    expect(res.status).toBe(200);
+    const accessDecoded = jwt.decode(res.body.accessToken) as jwt.JwtPayload;
+    expect(accessDecoded.role).toBe('validator');
   });
 });
 

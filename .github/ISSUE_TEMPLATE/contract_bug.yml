@@ -1,0 +1,95 @@
+name: Smart Contract (Soroban) Bug Report
+description: Report a bug in one of the ScoutOff Soroban smart contracts
+title: '[Contract Bug] '
+labels:
+  - blockchain
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > **Security Note:** Do **not** report security vulnerabilities (such as funds at risk, authorization bypasses, or state corruption exploits) in public GitHub issues. Please follow our private disclosure process in [`SECURITY.md`](https://github.com/scout-off/scout-off-backend/blob/main/SECURITY.md) or see the [Security Vulnerability template](https://github.com/scout-off/scout-off-backend/issues/new?template=security_vulnerability.md).
+
+  - type: dropdown
+    id: contract
+    attributes:
+      label: Contract
+      description: Which Soroban smart contract is affected?
+      options:
+        - register
+        - progress
+        - subscription
+        - connection
+        - player_token
+        - shared
+    validations:
+      required: true
+
+  - type: dropdown
+    id: network
+    attributes:
+      label: Network
+      description: Which Stellar / Soroban environment was used?
+      options:
+        - testnet
+        - futurenet
+        - mainnet
+        - local sandbox (scripts/soroban-sandbox)
+    validations:
+      required: true
+
+  - type: input
+    id: contract_and_tx
+    attributes:
+      label: Contract ID & Transaction Hash
+      description: Provide the deployed contract address (`C...`) and transaction hash, if applicable.
+      placeholder: 'Contract ID: C... / Tx Hash: ...'
+    validations:
+      required: false
+
+  - type: textarea
+    id: invocation
+    attributes:
+      label: Function Invoked & Arguments
+      description: Specify the contract entrypoint called and the arguments passed.
+      placeholder: |
+        Function: register_player
+        Arguments:
+          - player: G...
+          - metadata_cid: bafy...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_vs_actual
+    attributes:
+      label: Expected vs. Actual Behavior
+      description: Describe what should happen vs. what actually happened. Include any contract error code (see `contracts/shared/src/errors.rs`).
+      placeholder: |
+        Expected: Transaction succeeds and emits `player_rg`.
+        Actual: Failed with HostError: Error(Contract, #5) (`InvalidInput` in `contracts/shared/src/errors.rs`).
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide a failing `cargo test` unit/invariant test snippet or a `stellar contract invoke` CLI command if possible.
+      render: shell
+      placeholder: |
+        stellar contract invoke --id C... --network testnet -- register_player ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: Commit SHA, `contracts/rust-toolchain.toml` channel, and `stellar-cli` / `soroban-sdk` version.
+      placeholder: |
+        - Commit SHA: abc1234
+        - Rust toolchain (`contracts/rust-toolchain.toml`): 1.84.0
+        - stellar-cli version: 22.x
+    validations:
+      required: true

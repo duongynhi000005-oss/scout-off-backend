@@ -649,6 +649,9 @@ const config = {
   /** Age threshold for pending pins before reconciliation in milliseconds (default: 5 min). */
   ipfsReconcileAgeMs: parseNumericEnv('IPFS_RECONCILE_AGE_MS', process.env.IPFS_RECONCILE_AGE_MS, 300000, { min: 0, integer: true }),
 
+  /** Scheduled interval for IPFS pending pin retry worker in milliseconds (default: 30s). */
+  ipfsPinRetryIntervalMs: parseNumericEnv('IPFS_PIN_RETRY_INTERVAL_MS', process.env.IPFS_PIN_RETRY_INTERVAL_MS, 30000, { min: 5000, integer: true }),
+
   /** Scheduled interval for IPFS pending pin reconciliation in milliseconds (default: 60s). */
   ipfsReconcileIntervalMs: parseNumericEnv('IPFS_RECONCILE_INTERVAL_MS', process.env.IPFS_RECONCILE_INTERVAL_MS, 60000, { min: 1000, integer: true }),
 

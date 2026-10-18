@@ -361,6 +361,7 @@ describe('parseNumericEnv validation', () => {
     'EVIDENCE_MAX_BYTES',
     'ADMIN_ACTION_TTL_MS',
     'COMPRESSION_THRESHOLD',
+    'IPFS_PIN_RETRY_INTERVAL_MS',
   ];
 
   beforeEach(() => {
@@ -649,4 +650,29 @@ describe('parseNumericEnv validation', () => {
     expect(cfg.compressionThresholdBytes).toBe(512);
     delete process.env.COMPRESSION_THRESHOLD_BYTES;
   });
+
+  // ── IPFS_PIN_RETRY_INTERVAL_MS ───────────────────────────────────────────────
+
+  it('IPFS_PIN_RETRY_INTERVAL_MS: defaults to 30000 when unset', async () => {
+    delete process.env.IPFS_PIN_RETRY_INTERVAL_MS;
+    const cfg = await loadConfig();
+    expect(cfg.ipfsPinRetryIntervalMs).toBe(30000);
+  });
+
+  it('IPFS_PIN_RETRY_INTERVAL_MS: valid value 15000 loads without error', async () => {
+    process.env.IPFS_PIN_RETRY_INTERVAL_MS = '15000';
+    const cfg = await loadConfig();
+    expect(cfg.ipfsPinRetryIntervalMs).toBe(15000);
+  });
+
+  it('IPFS_PIN_RETRY_INTERVAL_MS: non-numeric string throws naming IPFS_PIN_RETRY_INTERVAL_MS', async () => {
+    process.env.IPFS_PIN_RETRY_INTERVAL_MS = 'not-a-number';
+    await expectThrowsContaining('IPFS_PIN_RETRY_INTERVAL_MS');
+  });
+
+  it('IPFS_PIN_RETRY_INTERVAL_MS: 4999 is below min (5000) and throws naming IPFS_PIN_RETRY_INTERVAL_MS', async () => {
+    process.env.IPFS_PIN_RETRY_INTERVAL_MS = '4999';
+    await expectThrowsContaining('IPFS_PIN_RETRY_INTERVAL_MS');
+  });
 });
+

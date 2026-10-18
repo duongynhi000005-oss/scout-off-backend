@@ -284,6 +284,8 @@ env:
   ADMIN_ACTION_TTL_MS: "3600000"
   # Player cache TTL in ms. Default: 60000 (1 min).
   PLAYER_CACHE_TTL_MS: "60000"
+  # Interval between IPFS pending-pin retry worker passes in ms. Default: 30000 (30s).
+  IPFS_PIN_RETRY_INTERVAL_MS: "30000"
 
 # -----------------------------------------------------------------------------
 # Pod annotations

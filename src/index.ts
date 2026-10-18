@@ -131,7 +131,10 @@ async function startServer() {
   poll();
   const pollInterval = setInterval(poll, 5_000);
 
-  // Poll for IPFS retries every 30 seconds
+  // Poll for IPFS retries on a configurable interval (default: 30 seconds).
+  // Deliberately not invoked immediately at startup: reconcilePins() already
+  // runs on startup to inspect existing pending pins against Pinata/gateways,
+  // and delaying the first retry pass avoids bursty Pinata API calls during boot.
   const retryPins = withJobTracking(async () => {
     try {
       await retryPendingPins();
@@ -140,7 +143,7 @@ async function startServer() {
     }
   });
 
-  const retryInterval = setInterval(retryPins, 30_000);
+  const retryInterval = setInterval(retryPins, config.ipfsPinRetryIntervalMs);
 
   // Scheduled reconciliation of pending pins against Pinata & IPFS gateways
   const reconcilePins = withJobTracking(async () => {

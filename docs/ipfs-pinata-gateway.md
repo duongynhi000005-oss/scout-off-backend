@@ -161,3 +161,13 @@ it to Pinata:
   network failures return **502**.
 - **Metrics** — rejections are counted in
   `evidence_download_rejected_total{reason="..."}` on `/metrics`.
+
+## Pending Pin Retry Worker (`IPFS_PIN_RETRY_INTERVAL_MS`)
+
+Failed or queued IPFS pins are periodically retried in the background by `retryPendingPins()`.
+
+- **Environment Variable:** `IPFS_PIN_RETRY_INTERVAL_MS`
+- **Default:** `30000` (30 seconds)
+- **Minimum:** `5000` (5 seconds)
+- **Startup Behavior:** Unlike `reconcilePendingPins()` (which runs immediately at boot to reconcile older pending pins against Pinata and fallback gateways), `retryPendingPins()` waits for the first `IPFS_PIN_RETRY_INTERVAL_MS` tick before executing so startup does not issue duplicate concurrent Pinata requests.
+

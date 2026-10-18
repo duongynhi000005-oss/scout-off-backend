@@ -341,7 +341,7 @@ npx lint-staged
 
 - **Types**: Use strict TypeScript; avoid `any` types where possible
 
-- **Documentation**: Update README if your changes affect user-facing behavior
+- **Documentation**: Update README if your changes affect user-facing behavior, and keep the `README.md` Table of Contents in sync when adding, renaming, or removing sections
 
 - **Git History**: Use atomic commits with meaningful messages
 

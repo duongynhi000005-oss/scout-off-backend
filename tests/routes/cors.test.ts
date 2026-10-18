@@ -133,9 +133,15 @@ describe('CORS origin allowlist', () => {
     expect(res.headers['api-version']).toBeDefined();
     expect(exposedHeaders).toEqual(expect.arrayContaining([
       'api-version',
+      'x-trace-id',
+      'x-correlation-id',
       'location',
       'retry-after',
       'x-ratelimit-reputation-limit',
+      'ratelimit-limit',
+      'ratelimit-remaining',
+      'ratelimit-reset',
+      'idempotent-replayed',
     ]));
   });
 

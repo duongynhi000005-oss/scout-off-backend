@@ -60,6 +60,7 @@ correlation and no span link — behaviour matches pre-#1113.
 
 ## Querying
 
+- Browser / HTTP clients: both `X-Correlation-ID` and `X-Trace-Id` are listed in CORS `Access-Control-Expose-Headers`, so browser frontends can read `res.headers.get('X-Trace-Id')` and attach the active OpenTelemetry trace ID to client error reports or support tickets.
 - Logs: look for `[cid=<id>]` (logger auto-inject) or
   `correlationId=<id>` in structured lines.
 - Traces: filter on attribute `scout.correlation_id` or follow span links

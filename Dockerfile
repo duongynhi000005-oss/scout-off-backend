@@ -56,7 +56,8 @@ LABEL org.opencontainers.image.title="${TITLE}" \
 # and never needs npm at runtime, so drop the npm/npx bundled with the base
 # image: it is unused attack surface and the source of every HIGH finding in
 # the CI Trivy scan (vulnerable copies of brace-expansion, picomatch, etc.).
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
+RUN apk add --no-cache tini \
+  && addgroup -S appgroup && adduser -S appuser -G appgroup \
   && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 WORKDIR /app
@@ -87,4 +88,5 @@ ENV DB_PATH=/data/scout-off.db \
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:4000/health/liveness || exit 1
 
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "dist/index.js"]

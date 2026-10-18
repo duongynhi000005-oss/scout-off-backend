@@ -864,6 +864,8 @@ healthcheck:
 
 Docker marks the container `(healthy)` once the first probe succeeds. The `start_period` of 15 seconds gives the Express server time to initialize before probes are counted as failures. The `--spider` flag tells `wget` to perform a HEAD-only request without downloading the response body, keeping healthcheck logs quiet. Run `docker compose ps` to confirm the container status shows `(healthy)` after startup.
 
+The runtime container image uses `tini` (`ENTRYPOINT ["/sbin/tini", "--"]`) as PID 1 ahead of `CMD ["node", "dist/index.js"]` so that `SIGTERM` and `SIGINT` are reliably forwarded to the Node.js process for graceful shutdown and any zombie child processes are reaped automatically.
+
 ## Multi-Sig Admin Operations
 
 High-value admin operations (withdraw fees, pause/unpause contract) require M-of-N multi-signature approval:

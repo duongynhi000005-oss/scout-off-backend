@@ -10,6 +10,7 @@ import config from '../config';
 import { ErrorCode } from '../utils/errorCodes';
 import { revokeToken, isTokenRevoked } from '../services/tokenBlocklist';
 import { signJwt, verifyJwt } from '../utils/jwt';
+import { incAuthFailure } from '../middleware/metrics';
 
 // ─── Schema ────────────────────────────────────────────────────────────────────
 
@@ -114,6 +115,7 @@ try {
 
     res.json({ token: accessToken, accessToken, refreshToken, account, expiresAt });
   } catch (err) {
+    incAuthFailure('sep10_invalid');
     // Normalise to Error — the SDK can throw DOMException (from the base64
     // decoder) or XdrError which, in some JS environments (e.g. Jest's vm
     // sandbox), may not satisfy `instanceof Error` even though they are

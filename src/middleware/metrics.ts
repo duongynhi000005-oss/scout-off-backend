@@ -333,6 +333,51 @@ export function resetWebhookDeadLetterInsertTimestamps(): void {
   webhookDeadLetterInsertTimestamps.length = 0;
 }
 
+// ─── Authentication failure counters (#1572) ──────────────────────────────────
+
+export const AUTH_FAILURE_REASONS = [
+  'missing_token',
+  'invalid_token',
+  'expired_token',
+  'revoked_token',
+  'forbidden_role',
+  'invalid_api_key',
+  'forbidden_scope',
+  'sep10_invalid',
+  'other',
+] as const;
+
+export type AuthFailureReason = (typeof AUTH_FAILURE_REASONS)[number];
+
+const VALID_AUTH_REASONS = new Set<string>(AUTH_FAILURE_REASONS);
+
+const authFailuresStore: Record<AuthFailureReason, number> = {
+  missing_token: 0,
+  invalid_token: 0,
+  expired_token: 0,
+  revoked_token: 0,
+  forbidden_role: 0,
+  invalid_api_key: 0,
+  forbidden_scope: 0,
+  sep10_invalid: 0,
+  other: 0,
+};
+
+/**
+ * Increment `scout_off_auth_failures_total{reason}`.
+ * Unknown reasons are mapped to `'other'` so label cardinality remains strictly bounded.
+ */
+export function incAuthFailure(reason: string): void {
+  const normalized: AuthFailureReason = VALID_AUTH_REASONS.has(reason)
+    ? (reason as AuthFailureReason)
+    : 'other';
+  authFailuresStore[normalized] += 1;
+}
+
+export function getAuthFailureMetrics(): Record<AuthFailureReason, number> {
+  return { ...authFailuresStore };
+}
+
 /** Resets every metric store. Intended for test isolation. */
 export function resetMetrics(): void {
   Object.keys(metricsStore).forEach((k) => delete metricsStore[k]);
@@ -346,6 +391,9 @@ export function resetMetrics(): void {
   cacheCountsStore.evictions = 0;
   cacheInvalidationStore.total = 0;
   stuckPendingPinsCount = 0;
+  for (const reason of AUTH_FAILURE_REASONS) {
+    authFailuresStore[reason] = 0;
+  }
   resetIpReputationCounters();
 }
 
@@ -603,6 +651,13 @@ export function serializeMetrics(extras: SerializeMetricsExtras = {}): string {
   lines.push('# HELP scout_off_tier_divergence_total Total number of player tier divergence events detected since process start');
   lines.push('# TYPE scout_off_tier_divergence_total counter');
   lines.push(`scout_off_tier_divergence_total ${getTierDivergenceForMetrics()}`);
+
+  // Authentication failure counter (#1572).
+  lines.push('# HELP scout_off_auth_failures_total Total number of authentication and authorization failures by reason');
+  lines.push('# TYPE scout_off_auth_failures_total counter');
+  for (const reason of AUTH_FAILURE_REASONS) {
+    lines.push(`scout_off_auth_failures_total{reason="${reason}"} ${authFailuresStore[reason]}`);
+  }
 
   return lines.join('\n') + '\n';
 }

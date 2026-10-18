@@ -70,12 +70,14 @@ Successful response:
 ```json
 {
   "challenge": "AAAA...",
-  "networkPassphrase": "Test SDF Network"
+  "networkPassphrase": "Test SDF Network",
+  "expiresAt": 1710000300
 }
 ```
 
 - `challenge` is a SEP-10 transaction XDR that must be signed by the client wallet.
 - `networkPassphrase` indicates which Stellar network the challenge uses.
+- `expiresAt` is the UNIX timestamp (in seconds) when the challenge expires (5-minute TTL).
 
 ### 2. Sign the challenge and request a JWT
 

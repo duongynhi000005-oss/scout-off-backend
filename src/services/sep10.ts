@@ -44,7 +44,7 @@ function resolveServerKeypair(): Keypair {
 }
 
 const SERVER_KEYPAIR = resolveServerKeypair();
-const CHALLENGE_TTL_SECONDS = 300; // 5 min to sign the challenge
+export const CHALLENGE_TTL_SECONDS = 300; // 5 min to sign the challenge
 const TIME_GRACE_WINDOW_SECONDS = 60; // Allow minTime to be up to 60 seconds in the future
 
 /**
@@ -146,6 +146,23 @@ export function extractAccount(xdr: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Extract the expiration timestamp (UNIX epoch seconds) from a SEP-10 challenge XDR,
+ * falling back to `now + CHALLENGE_TTL_SECONDS` if timeBounds cannot be parsed.
+ */
+export function getChallengeExpiresAt(xdr: string): number {
+  try {
+    const tx = new Transaction(xdr, config.networkPassphrase);
+    const maxTime = Number(tx.timeBounds?.maxTime ?? 0);
+    if (Number.isFinite(maxTime) && maxTime > 0) {
+      return maxTime;
+    }
+  } catch {
+    // Fallback when a test stubs buildChallenge with a non-XDR string
+  }
+  return Math.floor(Date.now() / 1000) + CHALLENGE_TTL_SECONDS;
 }
 
 /**

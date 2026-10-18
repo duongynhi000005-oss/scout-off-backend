@@ -71,7 +71,7 @@ function refreshAccountKey(req: Request): string | undefined {
  * /auth/token.
  *
  * @query account {string} - Stellar public key (G...) to build the challenge for
- * @response 200 { challenge: string, networkPassphrase: string }
+ * @response 200 { challenge: string, networkPassphrase: string, expiresAt: number }
  * @response 400 { success: false, error: string } - Missing/invalid account
  */
 router.route('/challenge')

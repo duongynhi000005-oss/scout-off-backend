@@ -141,3 +141,26 @@ describe('Cache-Control and Pragma headers on /auth/*', () => {
   });
 });
 
+describe('GET /auth/challenge — expiresAt timestamp (#1578)', () => {
+  it('includes an expiresAt UNIX timestamp (~5 minutes in the future) matching the challenge timeBounds.maxTime', async () => {
+    const { Keypair, Transaction } = await import('@stellar/stellar-sdk');
+    const kp = Keypair.random();
+    const before = Math.floor(Date.now() / 1000);
+    const res = await request(app)
+      .get('/auth/challenge')
+      .query({ account: kp.publicKey() });
+    const after = Math.floor(Date.now() / 1000);
+
+    expect(res.status).toBe(200);
+    expect(typeof res.body.challenge).toBe('string');
+    expect(typeof res.body.networkPassphrase).toBe('string');
+    expect(typeof res.body.expiresAt).toBe('number');
+    expect(res.body.expiresAt).toBeGreaterThanOrEqual(before + 300 - 2);
+    expect(res.body.expiresAt).toBeLessThanOrEqual(after + 300 + 2);
+
+    const tx = new Transaction(res.body.challenge, res.body.networkPassphrase);
+    expect(res.body.expiresAt).toBe(Number(tx.timeBounds?.maxTime));
+  });
+});
+
+

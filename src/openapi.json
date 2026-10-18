@@ -2278,7 +2278,7 @@
         ],
         "responses": {
           "200": {
-            "description": "{ challenge: string, networkPassphrase: string }"
+            "description": "{ challenge: string, networkPassphrase: string, expiresAt: number }"
           },
           "400": {
             "description": "{ success: false, error: string } - Missing/invalid account"

@@ -3994,7 +3994,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description { challenge: string, networkPassphrase: string } */
+            /** @description { challenge: string, networkPassphrase: string, expiresAt: number } */
             200: {
                 headers: {
                     [name: string]: unknown;

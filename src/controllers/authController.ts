@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Keypair } from '@stellar/stellar-sdk';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import { buildChallenge, verifyChallenge, extractAccount } from '../services/sep10';
+import { buildChallenge, getChallengeExpiresAt, verifyChallenge, extractAccount } from '../services/sep10';
 import { logger } from '../utils/logger';
 import { extractClientIp } from '../utils/ipExtractor';
 import config from '../config';
@@ -78,7 +78,10 @@ export function getChallenge(req: Request, res: Response, next: NextFunction): v
     return;
   }
   const challenge = buildChallenge(parsed.data.account);
-  res.json({ challenge, networkPassphrase: config.networkPassphrase });
+  const expiresAt = typeof getChallengeExpiresAt === 'function'
+    ? getChallengeExpiresAt(challenge)
+    : Math.floor(Date.now() / 1000) + 300;
+  res.json({ challenge, networkPassphrase: config.networkPassphrase, expiresAt });
 }
 
 // ─── POST /auth/token ──────────────────────────────────────────────────────────

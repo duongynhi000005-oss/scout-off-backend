@@ -252,7 +252,26 @@ describe.each(READINESS_PATHS)('%s', (path) => {
     expect(probeStatus(res.body.services.indexer)).toBe('ok');
   });
 
+  it('includes Retry-After: 5 header on 503 degraded readiness responses (#1615)', async () => {
+    mockCheckHealth.mockRejectedValueOnce(new Error('IPFS connection refused'));
+    const res = await request(app).get(path);
+    expect(res.status).toBe(503);
+    expect(res.body.status).toBe('degraded');
+    expect(res.headers['retry-after']).toBe('5');
+  });
 
+  it('includes Retry-After: 30 header on 503 draining readiness responses (#1615)', async () => {
+    const { setDraining } = await import('../../src/app');
+    setDraining(true);
+    try {
+      const res = await request(app).get(path);
+      expect(res.status).toBe(503);
+      expect(res.body).toEqual({ status: 'draining' });
+      expect(res.headers['retry-after']).toBe('30');
+    } finally {
+      setDraining(false);
+    }
+  });
 });
 
 // ─── /health ─────────────────────────────────────────────────────────────────

@@ -157,7 +157,9 @@ const processStartTime = Date.now();
  * the pod while it is draining.
  */
 let _draining = false;
-export function setDraining(): void { _draining = true; }
+export const READINESS_DEGRADED_RETRY_AFTER_SECONDS = '5';
+export const READINESS_DRAINING_RETRY_AFTER_SECONDS = '30';
+export function setDraining(value = true): void { _draining = value; }
 export function isDraining(): boolean { return _draining; }
 // Disable Express's default X-Powered-By header. helmet() also does this, but
 // being explicit here ensures it is suppressed regardless of middleware order.
@@ -371,6 +373,7 @@ async function checkReadiness(): Promise<Record<string, ProbeResult>> {
 
 app.get('/ready', async (_req, res) => {
   if (isDraining()) {
+    res.set('Retry-After', READINESS_DRAINING_RETRY_AFTER_SECONDS);
     res.status(503).json({ status: 'draining' });
     return;
   }
@@ -379,6 +382,7 @@ app.get('/ready', async (_req, res) => {
   if (allOk) {
     res.json({ status: 'ok', services });
   } else {
+    res.set('Retry-After', READINESS_DEGRADED_RETRY_AFTER_SECONDS);
     res.status(503).json({ status: 'degraded', services });
   }
 });
@@ -390,6 +394,7 @@ app.get('/health/liveness', createTimeout(5_000), (_req, res) => {
 
 app.get('/health/readiness', createTimeout(5_000), async (_req, res) => {
   if (isDraining()) {
+    res.set('Retry-After', READINESS_DRAINING_RETRY_AFTER_SECONDS);
     res.status(503).json({ status: 'draining' });
     return;
   }
@@ -398,6 +403,7 @@ app.get('/health/readiness', createTimeout(5_000), async (_req, res) => {
   if (allOk) {
     res.json({ status: 'ok', services });
   } else {
+    res.set('Retry-After', READINESS_DEGRADED_RETRY_AFTER_SECONDS);
     res.status(503).json({ status: 'degraded', services });
   }
 });

@@ -610,4 +610,212 @@ describe('sep10', () => {
       expect(() => instanceB.verifyChallenge(signedXdr)).toThrow('Challenge source account is not the server account');
     });
   });
+
+  describe('typed Sep10Error codes (#1518)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { Sep10Error } = require('../../src/services/sep10');
+
+    function expectSep10Code(fn: () => unknown, expectedCode: string): void {
+      let caught: unknown;
+      try {
+        fn();
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(Sep10Error);
+      expect((caught as { code: string }).code).toBe(expectedCode);
+    }
+
+    it('throws MALFORMED_XDR when XDR cannot be decoded', () => {
+      expectSep10Code(() => verifyChallenge('not-valid-xdr'), 'MALFORMED_XDR');
+    });
+
+    it('throws WRONG_SOURCE when transaction source is not the server account', () => {
+      const rogue = Keypair.random();
+      const tx = new TransactionBuilder(new Account(rogue.publicKey(), '-1'), {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.TESTNET,
+      })
+        .addOperation(
+          Operation.manageData({
+            name: 'scoutoff auth',
+            value: crypto.randomBytes(48).toString('base64'),
+            source: clientKeypair.publicKey(),
+          }),
+        )
+        .setTimeout(300)
+        .build();
+      tx.sign(rogue);
+      tx.sign(clientKeypair);
+      expectSep10Code(() => verifyChallenge(tx.toXdr()), 'WRONG_SOURCE');
+    });
+
+    it('throws BAD_SEQUENCE when sequence is not 0', () => {
+      const serverKp = getServerKeypair();
+      const tx = new TransactionBuilder(new Account(serverKp.publicKey(), '99'), {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.TESTNET,
+      })
+        .addOperation(
+          Operation.manageData({
+            name: 'scoutoff auth',
+            value: crypto.randomBytes(48).toString('base64'),
+            source: clientKeypair.publicKey(),
+          }),
+        )
+        .setTimeout(300)
+        .build();
+      tx.sign(serverKp);
+      tx.sign(clientKeypair);
+      expectSep10Code(() => verifyChallenge(tx.toXdr()), 'BAD_SEQUENCE');
+    });
+
+    it('throws MISSING_TIMEBOUNDS when timeBounds are infinite/unset', () => {
+      const serverKp = getServerKeypair();
+      const tx = new TransactionBuilder(new Account(serverKp.publicKey(), '-1'), {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.TESTNET,
+      })
+        .addOperation(
+          Operation.manageData({
+            name: 'scoutoff auth',
+            value: crypto.randomBytes(48).toString('base64'),
+            source: clientKeypair.publicKey(),
+          }),
+        )
+        .setTimeout(TimeoutInfinite)
+        .build();
+      tx.sign(serverKp);
+      tx.sign(clientKeypair);
+      expectSep10Code(() => verifyChallenge(tx.toXdr()), 'MISSING_TIMEBOUNDS');
+    });
+
+    it('throws FUTURE_MINTIME when minTime is beyond the grace window', () => {
+      const serverKp = getServerKeypair();
+      const nowSec = Math.floor(Date.now() / 1000);
+      const tx = new TransactionBuilder(new Account(serverKp.publicKey(), '-1'), {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.TESTNET,
+        timebounds: { minTime: nowSec + 600, maxTime: nowSec + 900 },
+      })
+        .addOperation(
+          Operation.manageData({
+            name: 'scoutoff auth',
+            value: crypto.randomBytes(48).toString('base64'),
+            source: clientKeypair.publicKey(),
+          }),
+        )
+        .build();
+      tx.sign(serverKp);
+      tx.sign(clientKeypair);
+      expectSep10Code(() => verifyChallenge(tx.toXdr()), 'FUTURE_MINTIME');
+    });
+
+    it('throws CHALLENGE_EXPIRED when maxTime has passed', () => {
+      const xdr = buildChallenge(clientKeypair.publicKey());
+      const tx = new Transaction(xdr, Networks.TESTNET);
+      tx.sign(clientKeypair);
+      const signedXdr = tx.toXdr();
+      const realNow = Date.now;
+      Date.now = () => realNow() + 400_000;
+      try {
+        expectSep10Code(() => verifyChallenge(signedXdr), 'CHALLENGE_EXPIRED');
+      } finally {
+        Date.now = realNow;
+      }
+    });
+
+    it('throws MISSING_OPERATIONS, INVALID_OPERATION, INVALID_NONCE, MISSING_CLIENT_SOURCE, NOT_SIGNED_BY_SERVER, INVALID_SIGNATURE, and CHALLENGE_REPLAYED', () => {
+      const serverKp = getServerKeypair();
+
+      // MISSING_OPERATIONS
+      const noOpsTx = new TransactionBuilder(new Account(serverKp.publicKey(), '-1'), {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.TESTNET,
+      })
+        .setTimeout(300)
+        .build();
+      noOpsTx.sign(serverKp);
+      expectSep10Code(() => verifyChallenge(noOpsTx.toXdr()), 'MISSING_OPERATIONS');
+
+      // INVALID_OPERATION
+      const badOpTx = new TransactionBuilder(new Account(serverKp.publicKey(), '-1'), {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.TESTNET,
+      })
+        .addOperation(
+          Operation.manageData({
+            name: 'wrong name',
+            value: crypto.randomBytes(48).toString('base64'),
+            source: clientKeypair.publicKey(),
+          }),
+        )
+        .setTimeout(300)
+        .build();
+      badOpTx.sign(serverKp);
+      expectSep10Code(() => verifyChallenge(badOpTx.toXdr()), 'INVALID_OPERATION');
+
+      // INVALID_NONCE
+      const badNonceTx = new TransactionBuilder(new Account(serverKp.publicKey(), '-1'), {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.TESTNET,
+      })
+        .addOperation(
+          Operation.manageData({
+            name: 'scoutoff auth',
+            value: Buffer.from('short'),
+            source: clientKeypair.publicKey(),
+          }),
+        )
+        .setTimeout(300)
+        .build();
+      badNonceTx.sign(serverKp);
+      expectSep10Code(() => verifyChallenge(badNonceTx.toXdr()), 'INVALID_NONCE');
+
+      // MISSING_CLIENT_SOURCE
+      const noSourceTx = new TransactionBuilder(new Account(serverKp.publicKey(), '-1'), {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.TESTNET,
+      })
+        .addOperation(
+          Operation.manageData({
+            name: 'scoutoff auth',
+            value: crypto.randomBytes(48).toString('base64'),
+          }),
+        )
+        .setTimeout(300)
+        .build();
+      noSourceTx.sign(serverKp);
+      expectSep10Code(() => verifyChallenge(noSourceTx.toXdr()), 'MISSING_CLIENT_SOURCE');
+
+      // NOT_SIGNED_BY_SERVER
+      const unsignedByServerTx = new TransactionBuilder(new Account(serverKp.publicKey(), '-1'), {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.TESTNET,
+      })
+        .addOperation(
+          Operation.manageData({
+            name: 'scoutoff auth',
+            value: crypto.randomBytes(48).toString('base64'),
+            source: clientKeypair.publicKey(),
+          }),
+        )
+        .setTimeout(300)
+        .build();
+      unsignedByServerTx.sign(clientKeypair);
+      expectSep10Code(() => verifyChallenge(unsignedByServerTx.toXdr()), 'NOT_SIGNED_BY_SERVER');
+
+      // INVALID_SIGNATURE (unsigned by client)
+      const unsignedChallenge = buildChallenge(clientKeypair.publicKey());
+      expectSep10Code(() => verifyChallenge(unsignedChallenge), 'INVALID_SIGNATURE');
+
+      // CHALLENGE_REPLAYED
+      const validTx = new Transaction(unsignedChallenge, Networks.TESTNET);
+      validTx.sign(clientKeypair);
+      const validSignedXdr = validTx.toXdr();
+      expect(verifyChallenge(validSignedXdr)).toEqual({ account: clientKeypair.publicKey() });
+      expectSep10Code(() => verifyChallenge(validSignedXdr), 'CHALLENGE_REPLAYED');
+    });
+  });
 });
+

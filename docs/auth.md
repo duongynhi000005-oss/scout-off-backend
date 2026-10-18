@@ -132,7 +132,19 @@ The `verifyAndIssueToken` function enforces the following SEP-10 requirements:
    - Any additional operations (e.g., `web_auth_domain`) must be sourced by the server account
 5. **Signatures** — Both the server and client must have signed the transaction
 
-Invalid challenges return `401 Unauthorized`. Malformed XDR or other protocol-level errors return `400 Bad Request`.
+Invalid challenges return `401 Unauthorized`. Malformed XDR returns `400 Bad Request` with a client-safe message. Unexpected runtime failures are forwarded to the global error handler (`500 Internal Server Error`).
+
+### `POST /auth/token` Error Responses (`Sep10Error`)
+
+`verifyChallenge` throws a typed `Sep10Error(code, message)` for every SEP-10 validation failure. `exchangeToken` maps `Sep10Error.code` directly to the HTTP status and API `ErrorCode`:
+
+| `Sep10ErrorCode` | HTTP Status | API `ErrorCode` | Client Response Message |
+|---|---|---|---|
+| `MALFORMED_XDR` | `400 Bad Request` | `VALIDATION_ERROR` | `Malformed challenge transaction XDR` |
+| `CHALLENGE_EXPIRED` | `401 Unauthorized` | `TOKEN_EXPIRED` | `Challenge transaction has expired` |
+| `WRONG_SOURCE`, `BAD_SEQUENCE`, `MISSING_TIMEBOUNDS`, `FUTURE_MINTIME`, `MISSING_OPERATIONS`, `INVALID_OPERATION`, `INVALID_NONCE`, `MISSING_CLIENT_SOURCE`, `NOT_SIGNED_BY_SERVER`, `INVALID_SIGNATURE`, `CHALLENGE_REPLAYED` | `401 Unauthorized` | `TOKEN_INVALID` | Specific `Sep10Error.message` |
+| Any non-`Sep10Error` runtime error | `500 Internal Server Error` | `INTERNAL_ERROR` | Handled by global `errorHandler` |
+
 
 ## JWT Claims Structure
 

@@ -148,6 +148,37 @@ export function extractAccount(xdr: string): string | null {
   }
 }
 
+export type Sep10ErrorCode =
+  | 'MALFORMED_XDR'
+  | 'WRONG_SOURCE'
+  | 'BAD_SEQUENCE'
+  | 'MISSING_TIMEBOUNDS'
+  | 'FUTURE_MINTIME'
+  | 'CHALLENGE_EXPIRED'
+  | 'MISSING_OPERATIONS'
+  | 'INVALID_OPERATION'
+  | 'INVALID_NONCE'
+  | 'MISSING_CLIENT_SOURCE'
+  | 'NOT_SIGNED_BY_SERVER'
+  | 'INVALID_SIGNATURE'
+  | 'CHALLENGE_REPLAYED';
+
+/**
+ * Typed error thrown by SEP-10 challenge verification (#1518).
+ * Carries a stable `code` discriminator so HTTP controllers can map failures to
+ * status codes and client-safe messages without matching `error.message` text.
+ */
+export class Sep10Error extends Error {
+  public readonly code: Sep10ErrorCode;
+
+  constructor(code: Sep10ErrorCode, message: string) {
+    super(message);
+    this.name = 'Sep10Error';
+    this.code = code;
+    Object.setPrototypeOf(this, Sep10Error.prototype);
+  }
+}
+
 /**
  * Verify the client-signed challenge XDR.
  *
@@ -158,150 +189,162 @@ export function extractAccount(xdr: string): string | null {
  *
  * @param xdr - The signed challenge transaction in XDR format
  * @returns Authenticated account ID
- * @throws Error if challenge structure is invalid or signature verification fails
+ * @throws {Sep10Error} if XDR decoding, challenge structure validation, or signature verification fails
  */
 export function verifyChallenge(xdr: string): { account: string } {
   const span = tracer.startSpan('sep10.verifyChallenge');
   try {
-  const tx = new Transaction(xdr, config.networkPassphrase);
-
-  // 1. Verify transaction source account is the server account
-  // Per SEP-10, the challenge transaction must have the server as the source account
-  if (tx.source !== SERVER_KEYPAIR.publicKey()) {
-    throw new Error('Challenge source account is not the server account');
-  }
-
-  // 2. Verify sequence number is 0
-  // The challenge is built from sequence -1, so the built tx has sequence 0
-  if (tx.sequence !== '0') {
-    throw new Error('Challenge sequence number must be 0');
-  }
-
-  // 3. Verify time bounds are present and valid
-  // SEP-10 requires timeBounds to be present; reject missing time bounds
-  // The SDK reports bounds as strings, so an unbounded (TimeoutInfinite)
-  // challenge shows up as maxTime '0' rather than a falsy value.
-  if (!tx.timeBounds || !tx.timeBounds.minTime || !tx.timeBounds.maxTime) {
-    throw new Error('Challenge must have time bounds');
-  }
-
-  const minTime = Number(tx.timeBounds.minTime);
-  const maxTime = Number(tx.timeBounds.maxTime);
-  if (maxTime === 0) {
-    throw new Error('Challenge must have time bounds');
-  }
-  const now = Math.floor(Date.now() / 1000);
-
-  // minTime must not be in the future (with a small grace window for clock skew)
-  if (minTime > now + TIME_GRACE_WINDOW_SECONDS) {
-    throw new Error('Challenge minTime is in the future');
-  }
-
-  // maxTime must not be too far in the past (challenge expired)
-  if (maxTime > 0 && now > maxTime) {
-    throw new Error('Challenge has expired');
-  }
-
-  // 4. Validate challenge transaction structure
-  if (!tx.operations || tx.operations.length === 0) {
-    throw new Error('Invalid challenge: no operations found');
-  }
-
-  // 5. Verify all operations are manageData operations
-  // Per SEP-10, every operation in the challenge must be a manageData operation
-  for (let i = 0; i < tx.operations.length; i++) {
-    const op = tx.operations[i];
-    if (op.type !== 'manageData') {
-      throw new Error(`Invalid challenge: operation ${i} must be manageData`);
-    }
-  }
-
-  const op = tx.operations[0];
-  const manageDataOp = op as Operation.ManageData;
-
-  // 6. Verify the operation name matches the expected server string
-  if (manageDataOp.name !== 'scoutoff auth') {
-    throw new Error('Invalid challenge: wrong operation name');
-  }
-
-  // 7. Verify the nonce value is present and properly formatted (64 bytes)
-  if (!manageDataOp.value) {
-    throw new Error('Invalid challenge: missing nonce value');
-  }
-
-  // Validate the nonce is exactly 64 bytes by checking the raw buffer length
-  if (manageDataOp.value.length !== 64) {
-    throw new Error('Invalid challenge: nonce must be exactly 64 bytes');
-  }
-
-  // 8. Verify the first operation's source is the client account
-  const clientAccountId = manageDataOp.source;
-  if (!clientAccountId) {
-    throw new Error('Missing source account in challenge');
-  }
-
-  // 9. Verify the server signed the challenge (proves it was built by this server)
-  // Per SEP-10, the challenge must originate from the server keypair
-  const serverSigned = tx.signatures.some((sig) => {
+    let tx: Transaction;
     try {
-      // In @stellar/stellar-sdk v16+, sig.signature is a Signature object
-      // with a .value (Uint8Array) property rather than a callable function.
-      const sigBytes = sig.signature instanceof Uint8Array
-        ? sig.signature
-        : (sig.signature as unknown as { value: Uint8Array }).value;
-      return SERVER_KEYPAIR.verify(tx.hash(), sigBytes);
-    } catch {
-      return false;
+      tx = new Transaction(xdr, config.networkPassphrase);
+    } catch (decodeErr) {
+      const detail = decodeErr instanceof Error
+        ? decodeErr.message
+        : String((decodeErr as { message?: string })?.message ?? decodeErr);
+      throw new Sep10Error('MALFORMED_XDR', `Malformed challenge transaction XDR: ${detail}`);
     }
-  });
-  if (!serverSigned) throw new Error('Challenge not signed by server');
 
-  // 10. Verify all additional operations (beyond the first) have server as source
-  // Per SEP-10, any manageData operations after the first must be sourced by the server
-  // This prevents clients from injecting extra data with their own source
-  for (let i = 1; i < tx.operations.length; i++) {
-    const extraOp = tx.operations[i];
-    const extraOpSource = extraOp.source;
-    if (extraOpSource !== SERVER_KEYPAIR.publicKey()) {
-      throw new Error(`Operation ${i} must be sourced by the server account`);
+    // 1. Verify transaction source account is the server account
+    // Per SEP-10, the challenge transaction must have the server as the source account
+    if (tx.source !== SERVER_KEYPAIR.publicKey()) {
+      throw new Sep10Error('WRONG_SOURCE', 'Challenge source account is not the server account');
     }
-  }
 
-  // 11. Cryptographically verify the client signed the transaction
-  // Using Keypair.verify() for proper ECDSA signature validation per SEP-10
-  const clientKeypair = Keypair.fromPublicKey(clientAccountId);
-  const clientSigned = tx.signatures.some((sig) => {
+    // 2. Verify sequence number is 0
+    // The challenge is built from sequence -1, so the built tx has sequence 0
+    if (tx.sequence !== '0') {
+      throw new Sep10Error('BAD_SEQUENCE', 'Challenge sequence number must be 0');
+    }
+
+    // 3. Verify time bounds are present and valid
+    // SEP-10 requires timeBounds to be present; reject missing time bounds
+    // The SDK reports bounds as strings, so an unbounded (TimeoutInfinite)
+    // challenge shows up as maxTime '0' rather than a falsy value.
+    if (!tx.timeBounds || !tx.timeBounds.minTime || !tx.timeBounds.maxTime) {
+      throw new Sep10Error('MISSING_TIMEBOUNDS', 'Challenge must have time bounds');
+    }
+
+    const minTime = Number(tx.timeBounds.minTime);
+    const maxTime = Number(tx.timeBounds.maxTime);
+    if (maxTime === 0) {
+      throw new Sep10Error('MISSING_TIMEBOUNDS', 'Challenge must have time bounds');
+    }
+    const now = Math.floor(Date.now() / 1000);
+
+    // minTime must not be in the future (with a small grace window for clock skew)
+    if (minTime > now + TIME_GRACE_WINDOW_SECONDS) {
+      throw new Sep10Error('FUTURE_MINTIME', 'Challenge minTime is in the future');
+    }
+
+    // maxTime must not be too far in the past (challenge expired)
+    if (maxTime > 0 && now > maxTime) {
+      throw new Sep10Error('CHALLENGE_EXPIRED', 'Challenge has expired');
+    }
+
+    // 4. Validate challenge transaction structure
+    if (!tx.operations || tx.operations.length === 0) {
+      throw new Sep10Error('MISSING_OPERATIONS', 'Invalid challenge: no operations found');
+    }
+
+    // 5. Verify all operations are manageData operations
+    // Per SEP-10, every operation in the challenge must be a manageData operation
+    for (let i = 0; i < tx.operations.length; i++) {
+      const op = tx.operations[i];
+      if (op.type !== 'manageData') {
+        throw new Sep10Error('INVALID_OPERATION', `Invalid challenge: operation ${i} must be manageData`);
+      }
+    }
+
+    const op = tx.operations[0];
+    const manageDataOp = op as Operation.ManageData;
+
+    // 6. Verify the operation name matches the expected server string
+    if (manageDataOp.name !== 'scoutoff auth') {
+      throw new Sep10Error('INVALID_OPERATION', 'Invalid challenge: wrong operation name');
+    }
+
+    // 7. Verify the nonce value is present and properly formatted (64 bytes)
+    if (!manageDataOp.value) {
+      throw new Sep10Error('INVALID_NONCE', 'Invalid challenge: missing nonce value');
+    }
+
+    // Validate the nonce is exactly 64 bytes by checking the raw buffer length
+    if (manageDataOp.value.length !== 64) {
+      throw new Sep10Error('INVALID_NONCE', 'Invalid challenge: nonce must be exactly 64 bytes');
+    }
+
+    // 8. Verify the first operation's source is the client account
+    const clientAccountId = manageDataOp.source;
+    if (!clientAccountId) {
+      throw new Sep10Error('MISSING_CLIENT_SOURCE', 'Missing source account in challenge');
+    }
+
+    // 9. Verify the server signed the challenge (proves it was built by this server)
+    // Per SEP-10, the challenge must originate from the server keypair
+    const serverSigned = tx.signatures.some((sig) => {
+      try {
+        // In @stellar/stellar-sdk v16+, sig.signature is a Signature object
+        // with a .value (Uint8Array) property rather than a callable function.
+        const sigBytes = sig.signature instanceof Uint8Array
+          ? sig.signature
+          : (sig.signature as unknown as { value: Uint8Array }).value;
+        return SERVER_KEYPAIR.verify(tx.hash(), sigBytes);
+      } catch {
+        return false;
+      }
+    });
+    if (!serverSigned) {
+      throw new Sep10Error('NOT_SIGNED_BY_SERVER', 'Challenge not signed by server');
+    }
+
+    // 10. Verify all additional operations (beyond the first) have server as source
+    // Per SEP-10, any manageData operations after the first must be sourced by the server
+    // This prevents clients from injecting extra data with their own source
+    for (let i = 1; i < tx.operations.length; i++) {
+      const extraOp = tx.operations[i];
+      const extraOpSource = extraOp.source;
+      if (extraOpSource !== SERVER_KEYPAIR.publicKey()) {
+        throw new Sep10Error('WRONG_SOURCE', `Operation ${i} must be sourced by the server account`);
+      }
+    }
+
+    // 11. Cryptographically verify the client signed the transaction
+    // Using Keypair.verify() for proper ECDSA signature validation per SEP-10
+    let clientKeypair: Keypair;
     try {
-      const sigBytes = sig.signature instanceof Uint8Array
-        ? sig.signature
-        : (sig.signature as unknown as { value: Uint8Array }).value;
-      return clientKeypair.verify(tx.hash(), sigBytes);
+      clientKeypair = Keypair.fromPublicKey(clientAccountId);
     } catch {
-      return false;
+      throw new Sep10Error('MISSING_CLIENT_SOURCE', 'Missing source account in challenge');
     }
-  });
-  if (!clientSigned) throw new Error('Invalid challenge signature');
+    const clientSigned = tx.signatures.some((sig) => {
+      try {
+        const sigBytes = sig.signature instanceof Uint8Array
+          ? sig.signature
+          : (sig.signature as unknown as { value: Uint8Array }).value;
+        return clientKeypair.verify(tx.hash(), sigBytes);
+      } catch {
+        return false;
+      }
+    });
+    if (!clientSigned) {
+      throw new Sep10Error('INVALID_SIGNATURE', 'Invalid challenge signature');
+    }
 
-  // 7. Reject replay of an already-redeemed challenge. SEP-10 intends each
-  // challenge to be single-use; without this check, a captured signed
-  // challenge can be replayed within its TTL window.
-  // within its TTL window.
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  pruneConsumedChallengeNonces(nowSeconds);
-  // value is Uint8Array in @stellar/stellar-sdk v16+; wrap in Buffer for base64
-  const nonceKey = Buffer.from(manageDataOp.value).toString('base64');
-  if (consumedChallengeNonces.has(nonceKey)) {
-    throw new Error('Challenge has already been used');
-  }
-  consumedChallengeNonces.set(nonceKey, maxTime > 0 ? maxTime : nowSeconds + CHALLENGE_TTL_SECONDS);
+    // 12. Reject replay of an already-redeemed challenge. SEP-10 intends each
+    // challenge to be single-use; without this check, a captured signed
+    // challenge can be replayed within its TTL window.
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    pruneConsumedChallengeNonces(nowSeconds);
+    // value is Uint8Array in @stellar/stellar-sdk v16+; wrap in Buffer for base64
+    const nonceKey = Buffer.from(manageDataOp.value).toString('base64');
+    if (consumedChallengeNonces.has(nonceKey)) {
+      throw new Sep10Error('CHALLENGE_REPLAYED', 'Challenge has already been used');
+    }
+    consumedChallengeNonces.set(nonceKey, maxTime > 0 ? maxTime : nowSeconds + CHALLENGE_TTL_SECONDS);
 
-  span.setAttribute('sep10.account', clientAccountId);
-  return { account: clientAccountId };
+    span.setAttribute('sep10.account', clientAccountId);
+    return { account: clientAccountId };
   } catch (err) {
-    // Normalise to a plain Error before re-throwing. The SDK can throw
-    // DOMException or XdrError which in some JS sandbox environments (e.g.
-    // Jest's vm context) may not satisfy `instanceof Error`. Wrapping here
-    // ensures callers always receive a genuine Error instance.
     const normalised = err instanceof Error
       ? err
       : new Error(String((err as { message?: string })?.message ?? err));

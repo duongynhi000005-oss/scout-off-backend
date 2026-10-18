@@ -650,3 +650,65 @@ describe('parseNumericEnv validation', () => {
     delete process.env.COMPRESSION_THRESHOLD_BYTES;
   });
 });
+
+describe('summarizeConfig (#1617)', () => {
+  const secretEnvVars: Record<string, string> = {
+    JWT_SECRET: 'super-secret-jwt-value-99887766554433221100aabbccddeeff',
+    JWT_SECRET_PREVIOUS: 'previous-jwt-secret-value-11223344556677889900aabbccdd',
+    SEP10_SERVER_SECRET: 'SSEP10SUPERSECRETVALUE1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+    API_KEY_LOOKUP_SECRET: 'lookup-secret-pepper-value-aabbccddeeff00112233445566778899',
+    PLATFORM_SECRET_KEY: 'SPLATFORMSUPERSECRETKEY1234567890ABCDEFGHIJKLMNOPQRSTUVW',
+    PLATFORM_SECRET: 'legacy-platform-secret-sentinel-value-99999',
+    PINATA_API_KEY: 'pinata-api-key-sentinel-value-12345',
+    PINATA_SECRET: 'pinata-secret-key-sentinel-value-67890',
+    WEBHOOK_SECRET: 'webhook-hmac-secret-sentinel-value-abcdef',
+    WEBHOOK_SECRET_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    WEBHOOK_SECRET_ENCRYPTION_KEY_PREVIOUS: 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
+    NOTES_ENCRYPTION_KEY: 'aaaa1111bbbb2222cccc3333dddd4444eeee5555ffff66660000777788889999',
+    NOTES_ENCRYPTION_KEY_PREVIOUS: '99998888777700006666ffff5555eeee4444dddd3333cccc2222bbbb1111aaaa',
+    DATABASE_URL: 'postgresql://dbuser:topsecretdbpass123@db.internal:5432/scoutoff',
+    REDIS_URL: 'redis://:topsecretredispass456@redis.internal:6379/0',
+  };
+
+  const savedEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    for (const [key, val] of Object.entries(secretEnvVars)) {
+      savedEnv[key] = process.env[key];
+      process.env[key] = val;
+    }
+    savedEnv.CONTRACT_ID = process.env.CONTRACT_ID;
+    process.env.CONTRACT_ID = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
+    jest.resetModules();
+  });
+
+  afterEach(() => {
+    for (const [key, val] of Object.entries(savedEnv)) {
+      if (val === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = val;
+      }
+    }
+    jest.resetModules();
+  });
+
+  it('builds an allowlisted summary and never leaks any secret env var value', async () => {
+    const mod = await import('../src/config');
+    const { redactLogArg } = await import('../src/utils/logRedaction');
+    const summary = mod.summarizeConfig(mod.default);
+    const serialized = JSON.stringify(redactLogArg(summary));
+
+    expect(summary.nodeEnv).toBeDefined();
+    expect(summary.dbDriver).toBe('sqlite');
+    expect(summary.redisEnabled).toBe(true);
+    expect(summary.contracts.contractId).toBe('CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4');
+    expect(summary.intervals.ipfsReconcileIntervalMs).toBeGreaterThan(0);
+
+    for (const [envName, secretValue] of Object.entries(secretEnvVars)) {
+      expect(JSON.stringify(summary)).not.toContain(secretValue);
+      expect(serialized).not.toContain(secretValue);
+      expect(envName).toBeTruthy();
+    }
+  });
+});

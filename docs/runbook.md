@@ -26,6 +26,16 @@ behind the chain tip after the last poll. It is exposed as
 (polls run every 5 s, and `INDEXER_FINALITY_MARGIN` — default `10` ledgers —
 intentionally treats the tip as non-final); persistent three-figure lag is not.
 
+### Startup configuration summary
+
+Immediately after `initDb()` completes at boot, the backend emits a single structured `info` log line built from an explicit allowlist of non-secret settings (`summarizeConfig(config)` passed through `redactLogArg`):
+
+```text
+[info] Effective configuration: {"nodeEnv":"production","network":"mainnet","port":4000,"dbDriver":"postgres","redisEnabled":true,"rateLimitEnabled":true,"ipReputationEnabled":true,"corsAllowedOriginsCount":2,"stellarHealthCheckEnabled":true,"webhookEnabled":true,"graphqlPersistedOnly":false,"readinessMaxLag":100,"readinessGracePeriodMs":300000,"contracts":{"contractId":"C...","registerContractId":"C...","progressContractId":"C...","subscriptionContractId":"C...","connectionContractId":"C..."},"intervals":{"ipfsReconcileIntervalMs":60000,"tierDivergenceIntervalMs":300000,"sseKeepaliveIntervalMs":15000,"sseAuthSweepIntervalMs":30000}}
+```
+
+Secrets (JWT signing keys, SEP-10 keys, Pinata credentials, encryption keys, and database/Redis connection strings) are never included in this summary, so operators can inspect effective settings directly from container stdout without running `kubectl exec` to read environment variables.
+
 ## Incident → action
 
 | Incident | Symptoms | Diagnosis | Action |

@@ -2,8 +2,9 @@ import { initTracing, shutdownTracing } from "./tracing";
 initTracing();
 
 import app, { setDraining } from "./app";
-import config from "./config";
+import config, { summarizeConfig } from "./config";
 import { logger } from "./utils/logger";
+import { redactLogArg } from "./utils/logRedaction";
 import { initDb, closeDb } from "./db";
 import { stellarHealth } from "./services/stellar";
 import { checkHealth, retryPendingPins, reconcilePendingPins } from "./services/ipfs";
@@ -38,6 +39,10 @@ async function start() {
     logger.error("Failed to initialize database:", err);
     process.exit(1);
   }
+
+  logger.info(
+    `Effective configuration: ${JSON.stringify(redactLogArg(summarizeConfig(config)))}`,
+  );
 
   // Initialise the token revocation blocklist (prune expired rows, schedule
   // background pruning, and kick off a non-blocking Redis warm-up sync).

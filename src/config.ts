@@ -856,6 +856,70 @@ export function isProduction(): boolean { return config.nodeEnv === 'production'
 export function isStaging(): boolean { return config.nodeEnv === 'staging'; }
 export function isDevelopment(): boolean { return config.nodeEnv === 'development'; }
 
+export interface ConfigSummary {
+  nodeEnv: NodeEnv;
+  network: string;
+  port: number;
+  dbDriver: 'sqlite' | 'postgres';
+  redisEnabled: boolean;
+  rateLimitEnabled: boolean;
+  ipReputationEnabled: boolean;
+  corsAllowedOriginsCount: number;
+  stellarHealthCheckEnabled: boolean;
+  webhookEnabled: boolean;
+  graphqlPersistedOnly: boolean;
+  readinessMaxLag: number;
+  readinessGracePeriodMs: number;
+  contracts: {
+    contractId: string;
+    registerContractId: string;
+    progressContractId: string;
+    subscriptionContractId: string;
+    connectionContractId: string;
+  };
+  intervals: {
+    ipfsReconcileIntervalMs: number;
+    tierDivergenceIntervalMs: number;
+    sseKeepaliveIntervalMs: number;
+    sseAuthSweepIntervalMs: number;
+  };
+}
+
+/**
+ * Returns a curated, non-secret summary of the effective configuration built
+ * strictly from an explicit allowlist of safe keys (#1617).
+ */
+export function summarizeConfig(cfg: typeof config = config): ConfigSummary {
+  return {
+    nodeEnv: cfg.nodeEnv,
+    network: cfg.network,
+    port: cfg.port,
+    dbDriver: cfg.dbDriver,
+    redisEnabled: Boolean(cfg.redisUrl),
+    rateLimitEnabled: cfg.rateLimit.enabled,
+    ipReputationEnabled: cfg.ipReputation.enabled,
+    corsAllowedOriginsCount: cfg.corsAllowedOrigins.length,
+    stellarHealthCheckEnabled: cfg.stellarHealthCheckEnabled,
+    webhookEnabled: cfg.webhook.enabled,
+    graphqlPersistedOnly: cfg.graphqlPersistedOnly,
+    readinessMaxLag: cfg.readinessMaxLag,
+    readinessGracePeriodMs: cfg.readinessGracePeriodMs,
+    contracts: {
+      contractId: cfg.contractId,
+      registerContractId: cfg.registerContractId,
+      progressContractId: cfg.progressContractId,
+      subscriptionContractId: cfg.subscriptionContractId,
+      connectionContractId: cfg.connectionContractId,
+    },
+    intervals: {
+      ipfsReconcileIntervalMs: cfg.ipfsReconcileIntervalMs,
+      tierDivergenceIntervalMs: cfg.tierDivergence.intervalMs,
+      sseKeepaliveIntervalMs: cfg.sse.keepaliveIntervalMs,
+      sseAuthSweepIntervalMs: cfg.sse.authSweepIntervalMs,
+    },
+  };
+}
+
 /** Route prefix constants for API versioning */
 export const API_PREFIX = process.env.API_PREFIX ?? '/api';
 export const API_V1_PREFIX = process.env.API_V1_PREFIX ?? '/api/v1';

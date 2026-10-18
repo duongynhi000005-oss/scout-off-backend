@@ -129,6 +129,7 @@ async function handleIdempotency(
         return;
       }
       logger.info(`[idempotency] cache_hit key=${trimmedKey}`);
+      res.set('Idempotent-Replayed', 'true');
       res.status(existingRecord.status_code).json(JSON.parse(existingRecord.response));
       return;
     }
@@ -175,6 +176,7 @@ async function handleIdempotency(
       // because we lost the race; if the fingerprint conflicts the winner
       // would have returned 409 before marking complete).
       logger.info(`[idempotency] served_after_lose_race key=${trimmedKey}`);
+      res.set('Idempotent-Replayed', 'true');
       res.status(existingRecord.status_code).json(JSON.parse(existingRecord.response));
       return;
     }
@@ -317,6 +319,7 @@ function waitForCompletion(
           return;
         }
         logger.info(`[idempotency] served_after_wait key=${key}`);
+        res.set('Idempotent-Replayed', 'true');
         res.status(record.status_code).json(JSON.parse(record.response));
       } else {
         // Record is still pending or gone — return 409.

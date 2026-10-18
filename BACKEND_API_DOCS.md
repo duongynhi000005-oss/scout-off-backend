@@ -215,7 +215,7 @@ The following endpoints accept and honour the `Idempotency-Key` header:
 
 #### Success (2xx)
 
-A successful response is cached with its status code and body. Repeating the same key returns the cached response:
+A successful response is cached with its status code and body. Repeating the same key returns the cached response and includes the `Idempotent-Replayed: true` response header (omitted on the initial execution):
 
 ```json
 { "success": true, "data": { "transactionId": "abc123...", "expiresAt": 1735689600000 } }
@@ -389,6 +389,14 @@ Use this to:
 - Monitor endpoint performance
 - Detect slow routes that may need optimization
 - Correlate with alerting thresholds
+
+### `Idempotent-Replayed`
+
+**Type:** String (`"true"`)  
+**Sent on:** Replayed responses served from the idempotency cache  
+**Purpose:** Distinguish a cached replay from a newly executed operation.
+
+When a request with an `Idempotency-Key` hits a completed cache entry (or finishes waiting for a concurrent duplicate), the response includes `Idempotent-Replayed: true`. On the initial execution of a key (or when no key is provided), the header is omitted.
 
 ---
 

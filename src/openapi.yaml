@@ -62,6 +62,15 @@ components:
         minLength: 56
         maxLength: 56
       description: Stellar public key (G…)
+  headers:
+    IdempotentReplayed:
+      description: >-
+        Set to `"true"` when the response was served from the idempotency cache rather than
+        executing the handler (#1611). Omitted on first execution.
+      schema:
+        type: string
+        enum:
+          - 'true'
   schemas:
     ErrorCode:
       type: string

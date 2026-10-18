@@ -136,6 +136,7 @@ const corsOptions: CorsOptions = {
     'Location',
     'Retry-After',
     'X-RateLimit-Reputation-Limit',
+    'Idempotent-Replayed',
   ],
   // credentials cannot be used with a wildcard origin (CORS spec); only enable
   // it when we are using an explicit allowlist

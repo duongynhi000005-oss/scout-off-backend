@@ -1,5 +1,15 @@
 import dotenv from 'dotenv';
-dotenv.config();
+
+const initialNodeEnv = process.env.NODE_ENV ?? 'development';
+if (
+  (initialNodeEnv !== 'production' && initialNodeEnv !== 'staging') ||
+  process.env.DOTENV_ENABLED === 'true'
+) {
+  const dotenvResult = dotenv.config();
+  if (!dotenvResult.error) {
+    console.info('[config] loaded .env file');
+  }
+}
 
 function required(name: string): string {
   const value = process.env[name];

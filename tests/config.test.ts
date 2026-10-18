@@ -650,3 +650,60 @@ describe('parseNumericEnv validation', () => {
     delete process.env.COMPRESSION_THRESHOLD_BYTES;
   });
 });
+
+describe('config .env loading (#1604)', () => {
+  const VALID_SECRET = 'a'.repeat(32);
+
+  afterEach(() => {
+    delete process.env.DOTENV_ENABLED;
+    delete process.env.PINATA_JWT;
+    process.env.NODE_ENV = 'test';
+    jest.restoreAllMocks();
+  });
+
+  it('does not call dotenv.config() in production when DOTENV_ENABLED is not set', async () => {
+    const dotenv = await import('dotenv');
+    const spy = jest.spyOn(dotenv.default, 'config');
+    process.env.NODE_ENV = 'production';
+    process.env.JWT_SECRET = VALID_SECRET;
+    process.env.PINATA_JWT = 'valid-pinata-jwt';
+    delete process.env.DOTENV_ENABLED;
+
+    await loadConfig();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('does not call dotenv.config() in staging when DOTENV_ENABLED is not set', async () => {
+    const dotenv = await import('dotenv');
+    const spy = jest.spyOn(dotenv.default, 'config');
+    process.env.NODE_ENV = 'staging';
+    process.env.JWT_SECRET = VALID_SECRET;
+    delete process.env.DOTENV_ENABLED;
+
+    await loadConfig();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('calls dotenv.config() in production when DOTENV_ENABLED=true', async () => {
+    const dotenv = await import('dotenv');
+    const spy = jest.spyOn(dotenv.default, 'config').mockReturnValue({ parsed: {} });
+    process.env.NODE_ENV = 'production';
+    process.env.JWT_SECRET = VALID_SECRET;
+    process.env.PINATA_JWT = 'valid-pinata-jwt';
+    process.env.DOTENV_ENABLED = 'true';
+
+    await loadConfig();
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls dotenv.config() by default in development and test', async () => {
+    const dotenv = await import('dotenv');
+    const spy = jest.spyOn(dotenv.default, 'config').mockReturnValue({ parsed: {} });
+    process.env.NODE_ENV = 'development';
+    process.env.JWT_SECRET = VALID_SECRET;
+    delete process.env.DOTENV_ENABLED;
+
+    await loadConfig();
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+});

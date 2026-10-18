@@ -17,7 +17,7 @@ Start every investigation with the health and metrics endpoints:
 | -------- | ----------------- |
 | `GET /health` | Process liveness, Stellar RPC reachability (`healthStatus.stellar`), DB probe (`healthStatus.db`) |
 | `GET /ready`  | Readiness: `ipfs`, `db`, `stellar` — returns `503`/`degraded` when any dependency is down |
-| `GET /metrics`| Prometheus metrics: `indexer_ledger_lag`, `http_requests_total`, `http_errors_total`, `db_query_duration_seconds`, `soroban_rpc_duration_seconds`, `webhook_delivery_total`, `scout_off_webhook_dead_letters_total`, `ip_reputation_blocked_total`, `sse_connections_active`, … |
+| `GET /metrics`| Prometheus metrics: `indexer_ledger_lag`, `scout_off_indexer_last_success_timestamp_seconds`, `scout_off_indexer_poll_failures_total`, `http_requests_total`, `http_errors_total`, `db_query_duration_seconds`, `soroban_rpc_duration_seconds`, `webhook_delivery_total`, `scout_off_webhook_dead_letters_total`, `ip_reputation_blocked_total`, `sse_connections_active`, … |
 
 **`indexer_ledger_lag`** is the single most useful indexer signal: ledgers
 behind the chain tip after the last poll. It is exposed as
@@ -26,11 +26,16 @@ behind the chain tip after the last poll. It is exposed as
 (polls run every 5 s, and `INDEXER_FINALITY_MARGIN` — default `10` ledgers —
 intentionally treats the tip as non-final); persistent three-figure lag is not.
 
+**`scout_off_indexer_last_success_timestamp_seconds`** and **`scout_off_indexer_poll_failures_total`** detect when `indexEvents()` stops succeeding (e.g. during an RPC outage or decode failure, where `indexer_ledger_lag` stays frozen at its last value). Alert when polls have not succeeded in over 60 seconds:
+```promql
+time() - scout_off_indexer_last_success_timestamp_seconds > 60
+```
+
 ## Incident → action
 
 | Incident | Symptoms | Diagnosis | Action |
 | -------- | -------- | --------- | ------ |
-| **Indexer stalled** | `indexer_ledger_lag` climbing; `player_registered`/`milestone_approved` events missing from the API; webhooks/SSE quiet | `GET /metrics` → `indexer_ledger_lag`; `GET /health` → `healthStatus.stellar` | If Stellar RPC is down, fix RPC first (below). If RPC is fine, check the indexer log for poll errors, then [replay](#targeted-replay-vs-full-reindex) from where it stopped. |
+| **Indexer stalled** | `indexer_ledger_lag` climbing or `time() - scout_off_indexer_last_success_timestamp_seconds > 60`; `scout_off_indexer_poll_failures_total` increasing; `player_registered`/`milestone_approved` events missing from the API; webhooks/SSE quiet | `GET /metrics` → `indexer_ledger_lag`, `scout_off_indexer_last_success_timestamp_seconds`, `scout_off_indexer_poll_failures_total`; `GET /health` → `healthStatus.stellar` | If Stellar RPC is down, fix RPC first (below). If RPC is fine, check the indexer log for poll errors, then [replay](#targeted-replay-vs-full-reindex) from where it stopped. |
 | **Tiers wrong** | A player's tier (0–3) doesn't match their approved milestones; scouts report stale tiers | Compare `GET /api/players/:playerId/milestones` against the tier thresholds in [docs/tier-promotion.md](tier-promotion.md) | The tier is derived from `milestone_approved` events — if events were indexed twice or never, run a [targeted replay](#targeted-replay-vs-full-reindex) over the range containing the approvals, then verify with the player endpoint. Cache may also be stale (see [cache flush](#cache-flush)). |
 | **Webhooks not arriving** | Subscriber gets nothing; `webhook_delivery_total` flat or erroring | `GET /api/admin/webhooks/dead-letters` — see [Draining the dead-letter queue](#draining-the-dead-letter-queue) | Requeue the affected deliveries. If they fail again, check the subscriber (docs/webhooks.md) — a permanently broken subscriber should be fixed or removed, not replayed forever. |
 | **RPC down** | `/health` → `healthStatus.stellar: error`; `/ready` → `stellar: unavailable`; `soroban_rpc_duration_seconds` spiking then failing | Check the circuit breaker (below) and the RPC provider status page | Fix/replace `SOROBAN_RPC_URL`. The circuit breaker opens after 3 consecutive failures and recovers automatically after its 10 s reset window — no manual reset needed. Once RPC is back, watch `indexer_ledger_lag` and [replay](#targeted-replay-vs-full-reindex) if the gap grew large. |

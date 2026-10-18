@@ -42,6 +42,18 @@ const approvedMilestones: Array<{ type: string; payload: unknown }> = [];
 /** Current indexer lag in ledgers (latestChainLedger - lastIndexedLedger). Reset after each poll. */
 export let indexerLedgerLag = 0;
 
+/** Epoch milliseconds of the last successful indexEvents() poll (#1574). */
+export let lastSuccessfulPollAt = 0;
+
+/** Total number of failed indexEvents() poll runs (#1574). */
+export let indexerPollFailuresTotal = 0;
+
+/** Reset indexer poll metrics for testing. */
+export function resetIndexerPollMetrics(): void {
+  lastSuccessfulPollAt = 0;
+  indexerPollFailuresTotal = 0;
+}
+
 /** Threshold in ledgers above which a warning is logged. Configurable via INDEXER_LAG_WARN_THRESHOLD. */
 function getLagWarnThreshold(): number {
   return parseInt(process.env.INDEXER_LAG_WARN_THRESHOLD ?? '100', 10);
@@ -246,7 +258,10 @@ export async function indexEvents(): Promise<void> {
     logger.warn(`[indexer] ledger lag=${lagAfterPoll} exceeds threshold=${threshold}`);
   }
 
-  if (!response.events.length) return;
+  if (!response.events.length) {
+    lastSuccessfulPollAt = Date.now();
+    return;
+  }
 
   const webhookEvents: Array<{ type: string; payload: unknown; txHash: string }> = [];
 
@@ -456,7 +471,9 @@ export async function indexEvents(): Promise<void> {
   }
 
   indexerLedgerLag = Math.max(0, response.latestLedger - latest.ledger);
+  lastSuccessfulPollAt = Date.now();
   } catch (err) {
+    indexerPollFailuresTotal += 1;
     span.recordException(err as Error);
     span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
     throw err;

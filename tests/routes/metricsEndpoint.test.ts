@@ -98,4 +98,26 @@ describe('GET /metrics — Prometheus exposition', () => {
     expect(body).toMatch(/http_errors_total\{range="4xx"\} 0/);
     expect(body).toMatch(/http_request_duration_ms_count 0/);
   });
+
+  it('exposes scout_off_indexer_last_success_timestamp_seconds and scout_off_indexer_poll_failures_total (#1574)', async () => {
+    const app = express();
+    app.get(
+      '/metrics',
+      createMetricsHandler(
+        () => 4,
+        () => 0,
+        () => 0,
+        () => 1710000123,
+        () => 3,
+      ),
+    );
+    const body = (await request(app).get('/metrics')).text;
+    expect(body).toContain('# HELP scout_off_indexer_last_success_timestamp_seconds');
+    expect(body).toContain('# TYPE scout_off_indexer_last_success_timestamp_seconds gauge');
+    expect(body).toContain('scout_off_indexer_last_success_timestamp_seconds 1710000123');
+    expect(body).toContain('# HELP scout_off_indexer_poll_failures_total');
+    expect(body).toContain('# TYPE scout_off_indexer_poll_failures_total counter');
+    expect(body).toContain('scout_off_indexer_poll_failures_total 3');
+  });
 });
+

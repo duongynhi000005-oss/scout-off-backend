@@ -24,7 +24,7 @@ import { ErrorCode } from './utils/errorCodes';
 import { metricsMiddleware, createMetricsHandler } from './middleware/metrics';
 import { ipReputationMiddleware } from './middleware/ipReputation';
 import { createTimeout, requestTimeout } from './middleware/timeout';
-import { indexerLedgerLag } from './services/indexer';
+import { indexerLedgerLag, lastSuccessfulPollAt, indexerPollFailuresTotal } from './services/indexer';
 import { getDriver } from './db';
 import { withTimeout } from './utils/withTimeout';
 import { getVersionInfo } from './version';
@@ -413,7 +413,16 @@ app.get(
 // Prometheus scrape endpoint. Intentionally unauthenticated and not rate-limited
 // (standard scrape pattern): it is registered before the auth routes and is not
 // wrapped by any auth or rate-limit middleware.
-app.get('/metrics', createMetricsHandler(() => indexerLedgerLag));
+app.get(
+  '/metrics',
+  createMetricsHandler(
+    () => indexerLedgerLag,
+    undefined,
+    undefined,
+    () => (lastSuccessfulPollAt ? Math.floor(lastSuccessfulPollAt / 1000) : 0),
+    () => indexerPollFailuresTotal ?? 0,
+  ),
+);
 
 app.use('/auth', authRoutes);
 

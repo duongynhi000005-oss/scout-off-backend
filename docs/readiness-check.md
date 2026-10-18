@@ -118,6 +118,12 @@ The indexer lag is also exposed via the `/metrics` endpoint as a gauge metric. Y
 # Current indexer lag
 indexer_ledger_lag
 
+# Alert when the indexer has not completed a successful poll in > 60s
+time() - scout_off_indexer_last_success_timestamp_seconds > 60
+
+# Rate of failed indexer polls
+rate(scout_off_indexer_poll_failures_total[5m]) > 0
+
 # Readiness status (derived from HTTP response)
 up{job="scout-off-backend", probe="readiness"}
 ```

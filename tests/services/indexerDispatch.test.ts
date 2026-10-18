@@ -423,3 +423,33 @@ describe('indexEvents — player cache invalidation (#763)', () => {
     expect(mockedInvalidatePlayerCache).not.toHaveBeenCalled();
   });
 });
+
+describe('indexEvents — poll metrics (#1574)', () => {
+  beforeEach(() => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const indexer = require('../../src/services/indexer');
+    indexer.resetIndexerPollMetrics();
+  });
+
+  it('updates lastSuccessfulPollAt on a successful poll', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const indexer = require('../../src/services/indexer');
+    server.getEvents.mockResolvedValue({ latestLedger: 200, events: [] });
+    const before = Date.now();
+    await indexEvents();
+    const after = Date.now();
+    expect(indexer.lastSuccessfulPollAt).toBeGreaterThanOrEqual(before);
+    expect(indexer.lastSuccessfulPollAt).toBeLessThanOrEqual(after);
+    expect(indexer.indexerPollFailuresTotal).toBe(0);
+  });
+
+  it('increments indexerPollFailuresTotal when server.getEvents throws', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const indexer = require('../../src/services/indexer');
+    server.getEvents.mockRejectedValue(new Error('RPC timeout'));
+    await expect(indexEvents()).rejects.toThrow('RPC timeout');
+    expect(indexer.indexerPollFailuresTotal).toBe(1);
+    expect(indexer.lastSuccessfulPollAt).toBe(0);
+  });
+});
+

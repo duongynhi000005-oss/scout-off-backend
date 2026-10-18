@@ -214,4 +214,45 @@ describe('replayDeadLetter', () => {
     expect(res.status).toHaveBeenCalledWith(409);
     expect(mockedFetch).not.toHaveBeenCalled();
   });
+
+  it('rejects duplicate webhook subscription URLs with DuplicateWebhookSubscriptionUrlError (#689)', () => {
+    const url = uniqueUrl('duplicate-url');
+    createWebhookSubscription(url, 'secret-a');
+    expect(() => createWebhookSubscription(url, 'secret-b')).toThrow(
+      /Webhook subscription already exists for URL/i,
+    );
+  });
+
+  it('replays dead letters normally when two subscriptions have distinct URLs (#689)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockedFetch.mockResolvedValue({ ok: true, status: 200 } as any);
+
+    const urlA = uniqueUrl('distinct-a');
+    const urlB = uniqueUrl('distinct-b');
+    const subA = createWebhookSubscription(urlA, 'secret-distinct-a');
+    createWebhookSubscription(urlB, 'secret-distinct-b');
+
+    // Dead letter with null subscriptionId falls back to matching urlA uniquely
+    const deadLetter = insertWebhookDeadLetter({
+      subscriptionId: null,
+      url: urlA,
+      eventType: 'player_registered',
+      payload: JSON.stringify({ deliveryId: 'del-distinct-001', eventType: 'player_registered', payload: {} }),
+      deliveryId: 'del-distinct-001',
+      failureReason: 'original failure',
+      attempts: 3,
+    });
+
+    const req = { params: { id: String(deadLetter.id) } } as unknown as Request;
+    const res = mockRes();
+    const next = jest.fn() as NextFunction;
+
+    await replayDeadLetter(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ success: true, data: { id: deadLetter.id, status: 'replayed' } }),
+    );
+    expect(subA.url).toBe(urlA);
+  });
 });

@@ -6,7 +6,10 @@
 
 CREATE TABLE IF NOT EXISTS webhook_subscriptions (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  url        TEXT NOT NULL,
+  url        TEXT NOT NULL UNIQUE,
   secret     TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_webhook_subscriptions_url ON webhook_subscriptions (url);
+

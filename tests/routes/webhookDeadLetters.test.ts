@@ -201,6 +201,23 @@ describe('POST /api/admin/webhooks/dead-letters/:id/requeue', () => {
       .set('Authorization', `Bearer ${adminToken()}`);
     expect(res.status).toBe(400);
   });
+
+  it('returns 409 when URL fallback finds multiple matching subscriptions (#689)', async () => {
+    mockGetById.mockReturnValue(makeLetter({ subscription_id: null, url: 'https://example.com/hook' }));
+    mockListSubs.mockReturnValue([
+      { id: 10, url: 'https://example.com/hook', secret: 'secret-10' },
+      { id: 11, url: 'https://example.com/hook', secret: 'secret-11' },
+    ]);
+
+    const res = await request(app)
+      .post('/api/admin/webhooks/dead-letters/42/requeue')
+      .set('Authorization', `Bearer ${adminToken()}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toMatch(/Ambiguous webhook subscription for URL/i);
+    expect(mockPost).not.toHaveBeenCalled();
+  });
 });
 
 describe('DELETE /api/admin/webhooks/dead-letters/:id', () => {

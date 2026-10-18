@@ -14,3 +14,11 @@ export class ApiKeyLimitError extends Error {
     this.name = 'ApiKeyLimitError';
   }
 }
+
+export class DuplicateWebhookSubscriptionUrlError extends Error {
+  constructor(url: string) {
+    super(`Webhook subscription already exists for URL: ${url}`);
+    this.name = 'DuplicateWebhookSubscriptionUrlError';
+  }
+}
+

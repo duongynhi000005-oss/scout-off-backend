@@ -25,7 +25,10 @@ import { signWebhookPayload } from '../services/webhooks';
 import { sendForbidden } from '../utils/authError';
 import { logger } from '../utils/logger';
 import type { ContractEventType } from '../types';
-import { WebhookSubscriptionLimitError } from '../utils/scoutResourceLimits';
+import {
+  DuplicateWebhookSubscriptionUrlError,
+  WebhookSubscriptionLimitError,
+} from '../utils/scoutResourceLimits';
 
 // ─── Known event types ────────────────────────────────────────────────────────
 
@@ -119,7 +122,10 @@ export async function registerWebhook(
       eventTypes,
     );
   } catch (err) {
-    if (err instanceof WebhookSubscriptionLimitError) {
+    if (
+      err instanceof WebhookSubscriptionLimitError ||
+      err instanceof DuplicateWebhookSubscriptionUrlError
+    ) {
       res.status(409).json({ success: false, error: err.message });
       return;
     }

@@ -96,9 +96,18 @@ try {
     }
 
     const subscriptions = listWebhookSubscriptions();
-    const subscription =
-      subscriptions.find((s) => s.id === deadLetter.subscription_id) ??
-      subscriptions.find((s) => s.url === deadLetter.url);
+    let subscription = subscriptions.find((s) => s.id === deadLetter.subscription_id);
+    if (!subscription) {
+      const urlMatches = subscriptions.filter((s) => s.url === deadLetter.url);
+      if (urlMatches.length > 1) {
+        res.status(409).json({
+          success: false,
+          error: `Ambiguous webhook subscription for URL "${deadLetter.url}": multiple subscriptions match; cannot safely resolve signing secret`,
+        });
+        return;
+      }
+      subscription = urlMatches[0];
+    }
 
     try {
       await postWebhookWithRetry(deadLetter.url, JSON.parse(deadLetter.payload), {

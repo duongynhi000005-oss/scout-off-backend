@@ -17,7 +17,13 @@ import {
   createBetterSqlite3LoadError,
   isBetterSqlite3LoadFailure,
 } from './betterSqlite3Error';
-import { ApiKeyLimitError, MAX_API_KEYS_PER_SCOUT, MAX_WEBHOOK_SUBSCRIPTIONS_PER_SCOUT, WebhookSubscriptionLimitError } from '../utils/scoutResourceLimits';
+import {
+  ApiKeyLimitError,
+  DuplicateWebhookSubscriptionUrlError,
+  MAX_API_KEYS_PER_SCOUT,
+  MAX_WEBHOOK_SUBSCRIPTIONS_PER_SCOUT,
+  WebhookSubscriptionLimitError,
+} from '../utils/scoutResourceLimits';
 
 const dbTracer = trace.getTracer('scout-off-backend');
 
@@ -3090,6 +3096,13 @@ export function createWebhookSubscription(
   const sql = 'INSERT INTO webhook_subscriptions (url, secret, scout_wallet, event_types) VALUES (?, ?, ?, ?)';
   return timedQuery(sql, () => {
     const insert = getDb().transaction(() => {
+      const existing = getDb()
+        .prepare('SELECT id FROM webhook_subscriptions WHERE url = ?')
+        .get(url) as { id: number } | undefined;
+      if (existing) {
+        throw new DuplicateWebhookSubscriptionUrlError(url);
+      }
+
       if (scoutWallet) {
         const row = getDb()
           .prepare('SELECT COUNT(*) AS count FROM webhook_subscriptions WHERE scout_wallet = ?')
@@ -3099,15 +3112,22 @@ export function createWebhookSubscription(
         }
       }
 
-      const info = getDb().prepare(sql).run(url, encryptedSecret, scoutWallet ?? null, eventTypesJson);
-      return {
-        id: Number(info.lastInsertRowid),
-        url,
-        secret: finalSecret,
-        scout_wallet: scoutWallet ?? null,
-        event_types: eventTypesJson,
-        created_at: new Date().toISOString(),
-      };
+      try {
+        const info = getDb().prepare(sql).run(url, encryptedSecret, scoutWallet ?? null, eventTypesJson);
+        return {
+          id: Number(info.lastInsertRowid),
+          url,
+          secret: finalSecret,
+          scout_wallet: scoutWallet ?? null,
+          event_types: eventTypesJson,
+          created_at: new Date().toISOString(),
+        };
+      } catch (err) {
+        if (err instanceof Error && /UNIQUE constraint failed: webhook_subscriptions\.url/i.test(err.message)) {
+          throw new DuplicateWebhookSubscriptionUrlError(url);
+        }
+        throw err;
+      }
     });
     return insert();
   });

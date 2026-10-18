@@ -179,17 +179,102 @@ async function startServer() {
   //   7. Close Redis, DB, tracing
   //   8. exit 0
 
-  const SHUTDOWN_TIMEOUT_MS = parseInt(
-    process.env.SHUTDOWN_TIMEOUT_MS ?? '10000',
-    10,
-  );
-  const SHUTDOWN_PRESTOP_DELAY_MS = parseInt(
-    process.env.SHUTDOWN_PRESTOP_DELAY_MS ?? '0',
-    10,
-  );
-  let isShuttingDown = false;
+  const {
+    onSigterm,
+    onSigint,
+    onUnhandledRejection,
+    onUncaughtException,
+  } = createShutdownController({
+    getInFlightJobs: () => inFlightJobs,
+    stopSchedulers: () => {
+      clearInterval(pollInterval);
+      clearInterval(retryInterval);
+      clearInterval(reconcileInterval);
+      clearInterval(divergenceInterval);
+    },
+    closeServer: () =>
+      new Promise<void>((resolve) => {
+        server.close((err) => {
+          if (err) {
+            logger.error("Error while closing HTTP server:", err);
+          } else {
+            logger.info("HTTP server closed");
+          }
+          resolve();
+        });
+        // closeIdleConnections() is available in Node ≥ 18.2.
+        if (
+          typeof (server as http.Server & { closeIdleConnections?: () => void })
+            .closeIdleConnections === "function"
+        ) {
+          (
+            server as http.Server & { closeIdleConnections: () => void }
+          ).closeIdleConnections();
+        }
+      }),
+  });
 
-  const shutdown = async (signal: string) => {
+  process.on("SIGTERM", onSigterm);
+  process.on("SIGINT", onSigint);
+  // Process-level safety nets (#1391). Registered once, after `shutdown` is
+  // defined, so uncaught exceptions can trigger the same graceful shutdown.
+  process.on("unhandledRejection", onUnhandledRejection);
+  process.on("uncaughtException", onUncaughtException);
+}
+
+export interface ShutdownOptions {
+  exit?: (code: number) => void;
+  exitOnUnhandledRejection?: boolean;
+  timeoutMs?: number;
+  prestopDelayMs?: number;
+  getInFlightJobs?: () => number;
+  stopSchedulers?: () => void;
+  closeServer?: () => Promise<void>;
+  closeResources?: () => Promise<void>;
+}
+
+export function createShutdownController(options: ShutdownOptions = {}) {
+  const exit = options.exit ?? ((code: number) => process.exit(code));
+  const SHUTDOWN_TIMEOUT_MS =
+    options.timeoutMs ??
+    parseInt(process.env.SHUTDOWN_TIMEOUT_MS ?? "10000", 10);
+  const SHUTDOWN_PRESTOP_DELAY_MS =
+    options.prestopDelayMs ??
+    parseInt(process.env.SHUTDOWN_PRESTOP_DELAY_MS ?? "0", 10);
+  const getInFlightJobs = options.getInFlightJobs ?? (() => 0);
+  const stopSchedulers = options.stopSchedulers ?? (() => {});
+  const closeServer = options.closeServer ?? (async () => {});
+  const closeResources =
+    options.closeResources ??
+    (async () => {
+      try {
+        await closeCacheInvalidationSubscriber();
+        await closeSecurityEventSubscriber();
+        await closeRedisClients();
+        logger.info("Redis connections closed");
+      } catch (redisErr) {
+        logger.error("Error closing Redis connections:", redisErr);
+      }
+
+      try {
+        await closeDb();
+        logger.info("Database connection closed");
+      } catch (dbErr) {
+        logger.error("Error closing database:", dbErr);
+      }
+
+      try {
+        await shutdownTracing();
+        logger.info("Tracing SDK shut down");
+      } catch (tracingErr) {
+        logger.error("Error shutting down tracing:", tracingErr);
+      }
+    });
+
+  let isShuttingDown = false;
+  let unhandledRejectionsTotal = 0;
+
+  const shutdown = async (signal: string, exitCode = 0): Promise<void> => {
     if (isShuttingDown) return;
     isShuttingDown = true;
     logger.info(`Received ${signal}, starting graceful shutdown...`);
@@ -208,25 +293,27 @@ async function startServer() {
       logger.error(
         `Graceful shutdown timed out after ${SHUTDOWN_TIMEOUT_MS}ms, forcing exit`,
       );
-      process.exit(1);
+      exit(1);
     }, SHUTDOWN_TIMEOUT_MS);
     forceExitTimer.unref();
 
     // Step 3: stop schedulers so no new jobs start.
-    clearInterval(pollInterval);
-    clearInterval(retryInterval);
-    clearInterval(reconcileInterval);
-    clearInterval(divergenceInterval);
+    stopSchedulers();
 
     // Step 4: await in-flight job executions (bounded to 60 % of total timeout).
-    if (inFlightJobs > 0) {
-      logger.info(`[shutdown] waiting for ${inFlightJobs} in-flight job(s)...`);
-      const jobDrainDeadline = Date.now() + Math.floor(SHUTDOWN_TIMEOUT_MS * 0.6);
-      while (inFlightJobs > 0 && Date.now() < jobDrainDeadline) {
+    if (getInFlightJobs() > 0) {
+      logger.info(
+        `[shutdown] waiting for ${getInFlightJobs()} in-flight job(s)...`,
+      );
+      const jobDrainDeadline =
+        Date.now() + Math.floor(SHUTDOWN_TIMEOUT_MS * 0.6);
+      while (getInFlightJobs() > 0 && Date.now() < jobDrainDeadline) {
         await new Promise((r) => setTimeout(r, 100));
       }
-      if (inFlightJobs > 0) {
-        logger.warn(`[shutdown] ${inFlightJobs} job(s) still running, proceeding`);
+      if (getInFlightJobs() > 0) {
+        logger.warn(
+          `[shutdown] ${getInFlightJobs()} job(s) still running, proceeding`,
+        );
       }
     }
 
@@ -234,59 +321,24 @@ async function startServer() {
     drainAllSessions();
 
     // Step 6: close HTTP server and destroy idle keep-alive connections.
-    await new Promise<void>((resolve) => {
-      server.close((err) => {
-        if (err) {
-          logger.error("Error while closing HTTP server:", err);
-        } else {
-          logger.info("HTTP server closed");
-        }
-        resolve();
-      });
-      // closeIdleConnections() is available in Node ≥ 18.2.
-      if (
-        typeof (server as http.Server & { closeIdleConnections?: () => void })
-          .closeIdleConnections === 'function'
-      ) {
-        (server as http.Server & { closeIdleConnections: () => void }).closeIdleConnections();
-      }
-    });
+    await closeServer();
 
     // Step 7: close Redis, DB, tracing.
-    try {
-      await closeCacheInvalidationSubscriber();
-      await closeSecurityEventSubscriber();
-      await closeRedisClients();
-      logger.info("Redis connections closed");
-    } catch (redisErr) {
-      logger.error("Error closing Redis connections:", redisErr);
-    }
-
-    try {
-      await closeDb();
-      logger.info("Database connection closed");
-    } catch (dbErr) {
-      logger.error("Error closing database:", dbErr);
-    }
-
-    try {
-      await shutdownTracing();
-      logger.info("Tracing SDK shut down");
-    } catch (tracingErr) {
-      logger.error("Error shutting down tracing:", tracingErr);
-    }
+    await closeResources();
 
     clearTimeout(forceExitTimer);
-    process.exit(0);
+    exit(exitCode);
   };
 
-  process.on("SIGTERM", () => { shutdown("SIGTERM").catch(() => process.exit(1)); });
-  process.on("SIGINT",  () => { shutdown("SIGINT").catch(() => process.exit(1)); });
-  // Process-level safety nets (#1391). Registered once, after `shutdown` is
-  // defined, so uncaught exceptions can trigger the same graceful shutdown.
-  let unhandledRejectionsTotal = 0;
+  const onSigterm = () => {
+    shutdown("SIGTERM", 0).catch(() => exit(1));
+  };
 
-  process.on("unhandledRejection", (reason: unknown) => {
+  const onSigint = () => {
+    shutdown("SIGINT", 0).catch(() => exit(1));
+  };
+
+  const onUnhandledRejection = (reason: unknown) => {
     unhandledRejectionsTotal += 1;
     const err = reason instanceof Error ? reason : new Error(String(reason));
     logger.error(
@@ -294,19 +346,32 @@ async function startServer() {
       err.stack ?? err.message,
     );
     // Do not exit by default; set EXIT_ON_UNHANDLED_REJECTION=true to opt in.
-    if (config.exitOnUnhandledRejection) {
-      shutdown("unhandledRejection");
+    const shouldExit =
+      options.exitOnUnhandledRejection ?? config.exitOnUnhandledRejection;
+    if (shouldExit) {
+      void shutdown("unhandledRejection", 1).catch(() => exit(1));
     }
-  });
+  };
 
-  process.on("uncaughtException", (err: Error) => {
+  const onUncaughtException = (err: Error) => {
     logger.error("Uncaught exception, shutting down:", err.stack ?? err.message);
-    shutdown("uncaughtException");
     process.exitCode = 1;
+    void shutdown("uncaughtException", 1).catch(() => exit(1));
+  };
+
+  return {
+    shutdown,
+    onSigterm,
+    onSigint,
+    onUnhandledRejection,
+    onUncaughtException,
+  };
+}
+
+if (require.main === module) {
+  start().catch((err) => {
+    logger.error("Unhandled startup error:", err);
+    process.exit(1);
   });
 }
 
-start().catch((err) => {
-  logger.error("Unhandled startup error:", err);
-  process.exit(1);
-});

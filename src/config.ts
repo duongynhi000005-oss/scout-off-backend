@@ -63,6 +63,42 @@ function parseNumericEnv(
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 type NodeEnv = 'development' | 'test' | 'staging' | 'production';
+export type ReadinessDependency = 'db' | 'ipfs' | 'stellar' | 'indexer';
+
+export const VALID_READINESS_DEPENDENCIES: ReadonlySet<ReadinessDependency> = new Set([
+  'db',
+  'ipfs',
+  'stellar',
+  'indexer',
+]);
+
+/**
+ * Parse and validate `READINESS_CRITICAL` (#1548).
+ * Defaults to `Set(['db'])` so a Pinata/IPFS or Stellar RPC outage marks the
+ * pod as `degraded` (HTTP 200) rather than taking every replica out of rotation.
+ */
+export function parseReadinessCritical(raw: string | undefined): Set<ReadinessDependency> {
+  if (raw === undefined) {
+    return new Set<ReadinessDependency>(['db']);
+  }
+  const trimmed = raw.trim();
+  if (trimmed === '') {
+    return new Set<ReadinessDependency>();
+  }
+  const result = new Set<ReadinessDependency>();
+  for (const part of trimmed.split(',')) {
+    const dep = part.trim().toLowerCase();
+    if (!dep) continue;
+    if (!VALID_READINESS_DEPENDENCIES.has(dep as ReadinessDependency)) {
+      throw new Error(
+        `Invalid READINESS_CRITICAL dependency "${part.trim()}". ` +
+        `Must be a comma-separated subset of: ${[...VALID_READINESS_DEPENDENCIES].join(', ')}`,
+      );
+    }
+    result.add(dep as ReadinessDependency);
+  }
+  return result;
+}
 
 const VALID_ENVS: ReadonlySet<string> = new Set(['development', 'test', 'staging', 'production']);
 
@@ -712,8 +748,10 @@ const config = {
     sampleSize: parseNumericEnv('TIER_DIVERGENCE_SAMPLE_SIZE', process.env.TIER_DIVERGENCE_SAMPLE_SIZE, 100, { min: 1, integer: true }),
   },
 
-  // ── Readiness / health check timeouts ──────────────────────────────────
-  // Per-component timeout for readiness probes (#1317)
+  // ── Readiness / health check timeouts & criticality (#1317, #1548) ────
+  readiness: {
+    critical: parseReadinessCritical(process.env.READINESS_CRITICAL),
+  },
   readinessDb: {
     timeoutMs: parseNumericEnv('READINESS_DB_TIMEOUT_MS', process.env.READINESS_DB_TIMEOUT_MS, 2000, { min: 1, integer: true }),
   },

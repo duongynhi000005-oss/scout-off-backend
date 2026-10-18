@@ -429,6 +429,27 @@ export function getFeeWithdrawalDbWriteFailuresTotal(): number {
   return feeWithdrawalDbWriteFailuresStore.total;
 }
 
+// ─── Per-dependency readiness gauge (#1548) ──────────────────────────────────
+
+export type DependencyGaugeName = 'db' | 'ipfs' | 'stellar' | 'indexer';
+
+const dependencyUpStore: Record<DependencyGaugeName, number> = {
+  db: 1,
+  ipfs: 1,
+  stellar: 1,
+  indexer: 1,
+};
+
+/** Record whether a readiness dependency is healthy (1 = ok/disabled, 0 = unavailable). */
+export function setDependencyUp(dependency: DependencyGaugeName, up: boolean | number): void {
+  dependencyUpStore[dependency] = up ? 1 : 0;
+}
+
+/** Returns a snapshot of `scout_off_dependency_up` gauge values. */
+export function getDependencyUpMetrics(): Record<DependencyGaugeName, number> {
+  return { ...dependencyUpStore };
+}
+
 // ─── Prometheus exposition ──────────────────────────────────────────────────────
 
 /** Content-Type for the Prometheus text exposition format (v0.0.4). */
@@ -603,6 +624,13 @@ export function serializeMetrics(extras: SerializeMetricsExtras = {}): string {
   lines.push('# HELP scout_off_tier_divergence_total Total number of player tier divergence events detected since process start');
   lines.push('# TYPE scout_off_tier_divergence_total counter');
   lines.push(`scout_off_tier_divergence_total ${getTierDivergenceForMetrics()}`);
+
+  // Per-dependency readiness gauge (#1548): 1 = ok or disabled, 0 = unavailable.
+  lines.push('# HELP scout_off_dependency_up Whether each readiness dependency is healthy (1 = ok/disabled, 0 = unavailable)');
+  lines.push('# TYPE scout_off_dependency_up gauge');
+  for (const [dep, val] of Object.entries(dependencyUpStore)) {
+    lines.push(`scout_off_dependency_up{dependency="${escapeLabelValue(dep)}"} ${val}`);
+  }
 
   return lines.join('\n') + '\n';
 }

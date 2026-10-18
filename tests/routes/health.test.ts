@@ -165,15 +165,31 @@ describe.each(READINESS_PATHS)('%s', (path) => {
     expect(elapsed).toBeLessThan(15_000);
   });
 
-  it('returns 503 with ipfs:unavailable when IPFS check throws (#1226)', async () => {
+  it('returns 200 with status:degraded and ipfs:unavailable when IPFS check throws under default criticality (#1548)', async () => {
     mockCheckHealth.mockRejectedValueOnce(new Error('IPFS connection refused'));
     const res = await request(app).get(path);
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(200);
     expect(res.body.status).toBe('degraded');
     expectProbeStatus(res.body.services.ipfs, 'unavailable');
+    expect(res.body.services.ipfs.critical).toBe(false);
+    expect(res.body.services.db.critical).toBe(true);
   });
 
-  it('returns 503 with db:unavailable when the database probe throws (#1226)', async () => {
+  it('returns 503 with status:unavailable when IPFS is configured as critical (READINESS_CRITICAL=db,ipfs) (#1548)', async () => {
+    process.env.READINESS_CRITICAL = 'db,ipfs';
+    try {
+      mockCheckHealth.mockRejectedValueOnce(new Error('IPFS connection refused'));
+      const res = await request(app).get(path);
+      expect(res.status).toBe(503);
+      expect(res.body.status).toBe('unavailable');
+      expectProbeStatus(res.body.services.ipfs, 'unavailable');
+      expect(res.body.services.ipfs.critical).toBe(true);
+    } finally {
+      delete process.env.READINESS_CRITICAL;
+    }
+  });
+
+  it('returns 503 with db:unavailable when the database probe throws (#1226, #1548)', async () => {
     mockCheckHealth.mockResolvedValueOnce(undefined);
     // Simulate a locked or corrupted DB. /ready's readiness probe
     // (probeDbWritable in src/app.ts) checks writability via driver.run(),
@@ -183,8 +199,9 @@ describe.each(READINESS_PATHS)('%s', (path) => {
     );
     const res = await request(app).get(path);
     expect(res.status).toBe(503);
-    expect(res.body.status).toBe('degraded');
+    expect(res.body.status).toBe('unavailable');
     expectProbeStatus(res.body.services.db, 'unavailable');
+    expect(res.body.services.db.critical).toBe(true);
   });
 
   it('returns 503 with db:unavailable when the DB is read-only (writes fail, reads still succeed)', async () => {
@@ -202,14 +219,15 @@ describe.each(READINESS_PATHS)('%s', (path) => {
     );
     const res = await request(app).get(path);
     expect(res.status).toBe(503);
-    expect(res.body.status).toBe('degraded');
+    expect(res.body.status).toBe('unavailable');
     expectProbeStatus(res.body.services.db, 'unavailable');
   });
 
   it('IPFS failure does not prevent db and stellar results from being reported', async () => {
     mockCheckHealth.mockRejectedValueOnce(new Error('IPFS timeout'));
     const res = await request(app).get(path);
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('degraded');
     // db and stellar probes should still return their own results
     expect(res.body.services).toHaveProperty('db');
     expect(res.body.services).toHaveProperty('stellar');
@@ -222,14 +240,26 @@ describe.each(READINESS_PATHS)('%s', (path) => {
     expect(['ok', 'unavailable', 'disabled']).toContain(probeStatus(res.body.services.indexer));
   });
 
-  it('returns 503 with indexer:unavailable when indexer lag exceeds threshold', async () => {
+  it('returns 200 degraded by default and 503 unavailable when indexer is critical and lag exceeds threshold', async () => {
     mockCheckHealth.mockResolvedValueOnce(undefined);
-    // Set indexer lag to exceed default threshold (100)
     mockIndexerLagState.value = 150;
-    const res = await request(app).get(path);
-    expect(res.status).toBe(503);
-    expect(res.body.status).toBe('degraded');
-    expect(probeStatus(res.body.services.indexer)).toBe('unavailable');
+    const defaultRes = await request(app).get(path);
+    expect(defaultRes.status).toBe(200);
+    expect(defaultRes.body.status).toBe('degraded');
+    expect(probeStatus(defaultRes.body.services.indexer)).toBe('unavailable');
+    expect(defaultRes.body.services.indexer.critical).toBe(false);
+
+    process.env.READINESS_CRITICAL = 'db,indexer';
+    try {
+      mockCheckHealth.mockResolvedValueOnce(undefined);
+      const critRes = await request(app).get(path);
+      expect(critRes.status).toBe(503);
+      expect(critRes.body.status).toBe('unavailable');
+      expect(probeStatus(critRes.body.services.indexer)).toBe('unavailable');
+      expect(critRes.body.services.indexer.critical).toBe(true);
+    } finally {
+      delete process.env.READINESS_CRITICAL;
+    }
   });
 
   it('returns 200 with indexer:ok when indexer lag is within threshold', async () => {
@@ -252,7 +282,22 @@ describe.each(READINESS_PATHS)('%s', (path) => {
     expect(probeStatus(res.body.services.indexer)).toBe('ok');
   });
 
+  it('exports scout_off_dependency_up{dependency} gauges on /metrics (#1548)', async () => {
+    mockCheckHealth.mockRejectedValueOnce(new Error('Pinata outage'));
+    await request(app).get(path);
 
+    const metricsRes = await request(app).get('/metrics');
+    expect(metricsRes.status).toBe(200);
+    expect(metricsRes.text).toContain('scout_off_dependency_up{dependency="db"} 1');
+    expect(metricsRes.text).toContain('scout_off_dependency_up{dependency="ipfs"} 0');
+  });
+
+  it('validates READINESS_CRITICAL values via parseReadinessCritical (#1548)', async () => {
+    const { parseReadinessCritical } = await import('../../src/config');
+    expect([...parseReadinessCritical(undefined)]).toEqual(['db']);
+    expect([...parseReadinessCritical('db,stellar')]).toEqual(['db', 'stellar']);
+    expect(() => parseReadinessCritical('db,redis')).toThrow(/Invalid READINESS_CRITICAL dependency "redis"/);
+  });
 });
 
 // ─── /health ─────────────────────────────────────────────────────────────────

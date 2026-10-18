@@ -65,6 +65,16 @@ The readiness check reports the indexer service status based on:
 - **Effect**: Sets the maximum time allowed for the Stellar Horizon/RPC ledger check to respond. If RPC times out, the probe reports `status: 'unavailable'`. Note that if the Stellar circuit breaker is currently open, this check short-circuits immediately with `unavailable` without making a network call. If `config.stellarHealthCheckEnabled` is false, it reports `disabled`.
 - **Recommended**: `3000-10000` ms.
 
+### `READINESS_CRITICAL`
+
+- **Purpose**: Comma-separated list of dependencies (`db`, `ipfs`, `stellar`, `indexer`) whose failure should mark the pod unready (`HTTP 503`, `status: 'unavailable'`).
+- **Default**: `db`
+- **Effect**:
+  - When all dependencies report `ok` or `disabled`: `HTTP 200` with `{ status: 'ok', services }`.
+  - When only non-critical dependencies (e.g. `ipfs` during a Pinata outage under the default `READINESS_CRITICAL=db`) are `unavailable`: `HTTP 200` with `{ status: 'degraded', services }`, keeping pods in rotation for DB-backed traffic.
+  - When any critical dependency is `unavailable`: `HTTP 503` with `{ status: 'unavailable', services }`.
+  - Each entry in `services` includes `critical: boolean` (`{ status, ms, critical }`), and Prometheus exports `scout_off_dependency_up{dependency="db|ipfs|stellar|indexer"}` (`1` = `ok`/`disabled`, `0` = `unavailable`).
+
 ## Use Cases
 
 ### Blue-Green Deployments

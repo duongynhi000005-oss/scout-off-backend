@@ -16,12 +16,12 @@ import { traceId } from './middleware/traceId';
 import { responseTime } from './middleware/responseTime';
 import { stellarHealth, stellarBreaker } from './services/stellar';
 import { checkHealth } from './services/ipfs';
-import { API_PREFIX, API_V1_PREFIX, API_V2_PREFIX } from './config';
+import { API_PREFIX, API_V1_PREFIX, API_V2_PREFIX, ReadinessDependency, parseReadinessCritical } from './config';
 import { mountGraphQL } from './graphql';
 import { createPersistedOperationsPlugin } from './graphql/persisted-operations';
 import { loadPersistedOperationsFromFile } from './graphql/persisted-operations';
 import { ErrorCode } from './utils/errorCodes';
-import { metricsMiddleware, createMetricsHandler } from './middleware/metrics';
+import { metricsMiddleware, createMetricsHandler, setDependencyUp } from './middleware/metrics';
 import { ipReputationMiddleware } from './middleware/ipReputation';
 import { createTimeout, requestTimeout } from './middleware/timeout';
 import { indexerLedgerLag } from './services/indexer';
@@ -304,20 +304,29 @@ function getReadinessTimeouts(): { db: number; ipfs: number; stellar: number } {
 export interface ProbeResult {
   status: 'ok' | 'unavailable' | 'disabled';
   ms: number;
+  critical: boolean;
 }
 
-async function checkReadiness(): Promise<Record<string, ProbeResult>> {
+function getCriticalDependencies(): Set<ReadinessDependency> {
+  if (process.env.READINESS_CRITICAL !== undefined) {
+    return parseReadinessCritical(process.env.READINESS_CRITICAL);
+  }
+  return config.readiness?.critical ?? new Set<ReadinessDependency>(['db']);
+}
+
+async function checkReadiness(): Promise<Record<ReadinessDependency, ProbeResult>> {
   const timeouts = getReadinessTimeouts();
+  const criticalSet = getCriticalDependencies();
 
   const [dbResult, ipfsResult, stellarResult, indexerResult] = await Promise.all([
-    (async (): Promise<ProbeResult> => {
+    (async (): Promise<Omit<ProbeResult, 'critical'>> => {
       const t0 = Date.now();
       const outcome = await probeDbWritable(timeouts.db);
       return { status: outcome === 'ok' ? 'ok' : 'unavailable', ms: Date.now() - t0 };
     })(),
 
     // IPFS probe — Pinata connectivity
-    (async (): Promise<ProbeResult> => {
+    (async (): Promise<Omit<ProbeResult, 'critical'>> => {
       const t0 = Date.now();
       const outcome = await withTimeout(
         async () => {
@@ -329,7 +338,7 @@ async function checkReadiness(): Promise<Record<string, ProbeResult>> {
     })(),
 
     // Stellar probe — RPC connectivity (can be disabled via config)
-    (async (): Promise<ProbeResult> => {
+    (async (): Promise<Omit<ProbeResult, 'critical'>> => {
       if (!config.stellarHealthCheckEnabled) {
         return { status: 'disabled', ms: 0 };
       }
@@ -359,14 +368,33 @@ async function checkReadiness(): Promise<Record<string, ProbeResult>> {
     })(),
   ]);
 
-  const services: Record<string, ProbeResult> = {
-    db: dbResult,
-    ipfs: ipfsResult,
-    stellar: stellarResult,
-    indexer: { status: indexerResult, ms: 0 },
+  const services: Record<ReadinessDependency, ProbeResult> = {
+    db: { ...dbResult, critical: criticalSet.has('db') },
+    ipfs: { ...ipfsResult, critical: criticalSet.has('ipfs') },
+    stellar: { ...stellarResult, critical: criticalSet.has('stellar') },
+    indexer: { status: indexerResult, ms: 0, critical: criticalSet.has('indexer') },
   };
 
+  for (const dep of ['db', 'ipfs', 'stellar', 'indexer'] as const) {
+    const s = services[dep].status;
+    setDependencyUp(dep, s === 'ok' || s === 'disabled');
+  }
+
   return services;
+}
+
+function sendReadinessResponse(res: express.Response, services: Record<ReadinessDependency, ProbeResult>): void {
+  const values = Object.values(services);
+  const criticalFailed = values.some((v) => v.critical && v.status !== 'ok' && v.status !== 'disabled');
+  const allOk = values.every((v) => v.status === 'ok' || v.status === 'disabled');
+
+  if (criticalFailed) {
+    res.status(503).json({ status: 'unavailable', services });
+  } else if (allOk) {
+    res.status(200).json({ status: 'ok', services });
+  } else {
+    res.status(200).json({ status: 'degraded', services });
+  }
 }
 
 app.get('/ready', async (_req, res) => {
@@ -375,12 +403,7 @@ app.get('/ready', async (_req, res) => {
     return;
   }
   const services = await checkReadiness();
-  const allOk = Object.values(services).every(v => v.status === 'ok' || v.status === 'disabled');
-  if (allOk) {
-    res.json({ status: 'ok', services });
-  } else {
-    res.status(503).json({ status: 'degraded', services });
-  }
+  sendReadinessResponse(res, services);
 });
 
 // Kubernetes-style liveness and readiness probes
@@ -394,12 +417,7 @@ app.get('/health/readiness', createTimeout(5_000), async (_req, res) => {
     return;
   }
   const services = await checkReadiness();
-  const allOk = Object.values(services).every(v => v.status === 'ok' || v.status === 'disabled');
-  if (allOk) {
-    res.json({ status: 'ok', services });
-  } else {
-    res.status(503).json({ status: 'degraded', services });
-  }
+  sendReadinessResponse(res, services);
 });
 
 // Operator-facing dependency health endpoint reporting version and latency per downstream (admin-gated)

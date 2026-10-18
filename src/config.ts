@@ -755,13 +755,20 @@ const config = {
   /** Ledger lag threshold for entering catch-up mode (ledgers). */
   reindexCatchupThreshold: parseNumericEnv('REINDEX_CATCHUP_THRESHOLD', process.env.REINDEX_CATCHUP_THRESHOLD, 500, { min: 1, integer: true }),
   /** Ledgers processed per batch in catch-up mode. */
-  reindexCatchupBatchSize: parseNumericEnv('REINDEX_CATCHUP_BATCH_SIZE', process.env.REINDEX_CATCHUP_BATCH_SIZE, 500, { min: 1, integer: true }),
+  reindexCatchupBatchSize: parseNumericEnv('REINDEX_CATCHUP_BATCH_SIZE', process.env.REINDEX_CATCHUP_BATCH_SIZE, 500, { min: 1, max: 10000, integer: true }),
   /** Ledgers processed per batch in steady-state mode. */
-  reindexBatchSize: parseNumericEnv('REINDEX_BATCH_SIZE', process.env.REINDEX_BATCH_SIZE, 100, { min: 1, integer: true }),
+  reindexBatchSize: parseNumericEnv('REINDEX_BATCH_SIZE', process.env.REINDEX_BATCH_SIZE, 100, { min: 1, max: 10000, integer: true }),
   /** Delay between reindex batches (ms). */
   reindexBatchDelayMs: parseNumericEnv('REINDEX_BATCH_DELAY_MS', process.env.REINDEX_BATCH_DELAY_MS, 50, { min: 0, integer: true }),
   /** Backoff when RPC returns rate-limit errors during reindex (ms). */
   reindexRateLimitBackoffMs: parseNumericEnv('REINDEX_RATE_LIMIT_BACKOFF_MS', process.env.REINDEX_RATE_LIMIT_BACKOFF_MS, 2000, { min: 1, integer: true }),
+  reindex: {
+    batchSize: parseNumericEnv('REINDEX_BATCH_SIZE', process.env.REINDEX_BATCH_SIZE, 100, { min: 1, max: 10000, integer: true }),
+    batchDelayMs: parseNumericEnv('REINDEX_BATCH_DELAY_MS', process.env.REINDEX_BATCH_DELAY_MS, 50, { min: 0, integer: true }),
+    catchupBatchSize: parseNumericEnv('REINDEX_CATCHUP_BATCH_SIZE', process.env.REINDEX_CATCHUP_BATCH_SIZE, 500, { min: 1, max: 10000, integer: true }),
+    catchupThreshold: parseNumericEnv('REINDEX_CATCHUP_THRESHOLD', process.env.REINDEX_CATCHUP_THRESHOLD, 500, { min: 1, integer: true }),
+    rateLimitBackoffMs: parseNumericEnv('REINDEX_RATE_LIMIT_BACKOFF_MS', process.env.REINDEX_RATE_LIMIT_BACKOFF_MS, 2000, { min: 1, integer: true }),
+  },
 
   // ── Indexer settings ──────────────────────────────────────────────────
   /** Finality margin: ledgers to hold back from tip to avoid reorgs. */

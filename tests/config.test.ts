@@ -361,6 +361,11 @@ describe('parseNumericEnv validation', () => {
     'EVIDENCE_MAX_BYTES',
     'ADMIN_ACTION_TTL_MS',
     'COMPRESSION_THRESHOLD',
+    'REINDEX_BATCH_SIZE',
+    'REINDEX_BATCH_DELAY_MS',
+    'REINDEX_CATCHUP_BATCH_SIZE',
+    'REINDEX_CATCHUP_THRESHOLD',
+    'REINDEX_RATE_LIMIT_BACKOFF_MS',
   ];
 
   beforeEach(() => {
@@ -648,5 +653,43 @@ describe('parseNumericEnv validation', () => {
     const cfg = await loadConfig();
     expect(cfg.compressionThresholdBytes).toBe(512);
     delete process.env.COMPRESSION_THRESHOLD_BYTES;
+  });
+
+  // ── REINDEX_* ────────────────────────────────────────────────────────────────
+
+  it('populates config.reindex from env', async () => {
+    process.env.REINDEX_BATCH_SIZE = '200';
+    process.env.REINDEX_BATCH_DELAY_MS = '100';
+    process.env.REINDEX_CATCHUP_BATCH_SIZE = '800';
+    process.env.REINDEX_CATCHUP_THRESHOLD = '600';
+    process.env.REINDEX_RATE_LIMIT_BACKOFF_MS = '3000';
+    const cfg = await loadConfig();
+    expect(cfg.reindex).toEqual({
+      batchSize: 200,
+      batchDelayMs: 100,
+      catchupBatchSize: 800,
+      catchupThreshold: 600,
+      rateLimitBackoffMs: 3000,
+    });
+  });
+
+  it('REINDEX_BATCH_SIZE: 0 is below min (1) and throws', async () => {
+    process.env.REINDEX_BATCH_SIZE = '0';
+    await expectThrowsContaining('REINDEX_BATCH_SIZE');
+  });
+
+  it('REINDEX_BATCH_SIZE: 10001 exceeds max (10000) and throws', async () => {
+    process.env.REINDEX_BATCH_SIZE = '10001';
+    await expectThrowsContaining('REINDEX_BATCH_SIZE');
+  });
+
+  it('REINDEX_CATCHUP_BATCH_SIZE: 0 is below min (1) and throws', async () => {
+    process.env.REINDEX_CATCHUP_BATCH_SIZE = '0';
+    await expectThrowsContaining('REINDEX_CATCHUP_BATCH_SIZE');
+  });
+
+  it('REINDEX_CATCHUP_THRESHOLD: 0 is below min (1) and throws', async () => {
+    process.env.REINDEX_CATCHUP_THRESHOLD = '0';
+    await expectThrowsContaining('REINDEX_CATCHUP_THRESHOLD');
   });
 });

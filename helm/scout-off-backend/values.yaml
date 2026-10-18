@@ -284,6 +284,12 @@ env:
   ADMIN_ACTION_TTL_MS: "3600000"
   # Player cache TTL in ms. Default: 60000 (1 min).
   PLAYER_CACHE_TTL_MS: "60000"
+  # Reindex / catch-up mode tuning
+  REINDEX_BATCH_SIZE: "100"
+  REINDEX_BATCH_DELAY_MS: "50"
+  REINDEX_CATCHUP_BATCH_SIZE: "500"
+  REINDEX_CATCHUP_THRESHOLD: "500"
+  REINDEX_RATE_LIMIT_BACKOFF_MS: "2000"
 
 # -----------------------------------------------------------------------------
 # Pod annotations

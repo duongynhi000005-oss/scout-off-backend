@@ -13,6 +13,7 @@
  *   - Catch-up and steady parameters are configurable via env vars
  */
 
+import config from '../../src/config';
 import {
   startReindex,
   getReindexStatus,
@@ -50,39 +51,24 @@ async function flushBackground(): Promise<void> {
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
-let originalEnvSnapshot: Record<string, string | undefined> = {};
-
-const CATCH_UP_ENV_VARS = [
-  'REINDEX_CATCHUP_THRESHOLD',
-  'REINDEX_CATCHUP_BATCH_SIZE',
-  'REINDEX_BATCH_SIZE',
-  'REINDEX_BATCH_DELAY_MS',
-  'REINDEX_RATE_LIMIT_BACKOFF_MS',
-];
+const DEFAULT_REINDEX_CONFIG = {
+  batchSize: 100,
+  batchDelayMs: 50,
+  catchupBatchSize: 500,
+  catchupThreshold: 500,
+  rateLimitBackoffMs: 2000,
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers();
   _resetReindexState();
-
-  // Save env snapshot so each test starts clean
-  originalEnvSnapshot = {};
-  for (const key of CATCH_UP_ENV_VARS) {
-    originalEnvSnapshot[key] = process.env[key];
-    delete process.env[key];
-  }
+  Object.assign(config.reindex, DEFAULT_REINDEX_CONFIG);
 });
 
 afterEach(() => {
   jest.useRealTimers();
-  // Restore env vars
-  for (const [key, val] of Object.entries(originalEnvSnapshot)) {
-    if (val === undefined) {
-      delete process.env[key];
-    } else {
-      process.env[key] = val;
-    }
-  }
+  Object.assign(config.reindex, DEFAULT_REINDEX_CONFIG);
 });
 
 // ── Catch-up mode activation ──────────────────────────────────────────────────
@@ -90,9 +76,9 @@ afterEach(() => {
 describe('catch-up mode activation', () => {
   it('uses catch-up batch size when remaining ledgers exceed REINDEX_CATCHUP_THRESHOLD', async () => {
     // Set threshold = 50, catchup batch = 200, steady batch = 10
-    process.env.REINDEX_CATCHUP_THRESHOLD = '50';
-    process.env.REINDEX_CATCHUP_BATCH_SIZE = '200';
-    process.env.REINDEX_BATCH_SIZE = '10';
+    config.reindex.catchupThreshold = 50;
+    config.reindex.catchupBatchSize = 200;
+    config.reindex.batchSize = 10;
 
     const callLedgerStarts: number[] = [];
 
@@ -117,9 +103,9 @@ describe('catch-up mode activation', () => {
   });
 
   it('uses steady-state batch size when remaining ledgers are below REINDEX_CATCHUP_THRESHOLD', async () => {
-    process.env.REINDEX_CATCHUP_THRESHOLD = '1000'; // high threshold → always steady
-    process.env.REINDEX_CATCHUP_BATCH_SIZE = '500';
-    process.env.REINDEX_BATCH_SIZE = '25';
+    config.reindex.catchupThreshold = 1000; // high threshold → always steady
+    config.reindex.catchupBatchSize = 500;
+    config.reindex.batchSize = 25;
 
     const callLedgerStarts: number[] = [];
 
@@ -140,8 +126,8 @@ describe('catch-up mode activation', () => {
   });
 
   it('state.mode is "catchup" when lag is high', async () => {
-    process.env.REINDEX_CATCHUP_THRESHOLD = '50';
-    process.env.REINDEX_CATCHUP_BATCH_SIZE = '200';
+    config.reindex.catchupThreshold = 50;
+    config.reindex.catchupBatchSize = 200;
 
     // Return a pending promise on the first call so we can check state mid-run
     let resolve!: () => void;
@@ -166,7 +152,7 @@ describe('catch-up mode activation', () => {
   });
 
   it('state.mode is "steady" when lag is low', async () => {
-    process.env.REINDEX_CATCHUP_THRESHOLD = '1000';
+    config.reindex.catchupThreshold = 1000;
 
     mockGetEvents.mockResolvedValue({ events: [] });
 
@@ -183,9 +169,9 @@ describe('catch-up mode activation', () => {
 
 describe('zero delay in catch-up mode', () => {
   it('does not call setTimeout between batches in catch-up mode', async () => {
-    process.env.REINDEX_CATCHUP_THRESHOLD = '50';
-    process.env.REINDEX_CATCHUP_BATCH_SIZE = '200';
-    process.env.REINDEX_BATCH_DELAY_MS = '100'; // steady delay = 100 ms
+    config.reindex.catchupThreshold = 50;
+    config.reindex.catchupBatchSize = 200;
+    config.reindex.batchDelayMs = 100; // steady delay = 100 ms
 
     const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
 
@@ -206,9 +192,9 @@ describe('zero delay in catch-up mode', () => {
   });
 
   it('applies steady-state delay between batches in steady mode', async () => {
-    process.env.REINDEX_CATCHUP_THRESHOLD = '1000'; // ensure steady mode
-    process.env.REINDEX_BATCH_DELAY_MS = '50';
-    process.env.REINDEX_BATCH_SIZE = '10';
+    config.reindex.catchupThreshold = 1000; // ensure steady mode
+    config.reindex.batchDelayMs = 50;
+    config.reindex.batchSize = 10;
 
     const delays: number[] = [];
     const realSetTimeout = global.setTimeout;
@@ -236,8 +222,8 @@ describe('zero delay in catch-up mode', () => {
 
 describe('RPC 429 backoff — applies in both modes', () => {
   it('backs off on a 429 error in steady mode and retries the same batch', async () => {
-    process.env.REINDEX_CATCHUP_THRESHOLD = '1000'; // steady mode
-    process.env.REINDEX_RATE_LIMIT_BACKOFF_MS = '100';
+    config.reindex.catchupThreshold = 1000; // steady mode
+    config.reindex.rateLimitBackoffMs = 100;
 
     let callCount = 0;
     mockGetEvents.mockImplementation(async () => {
@@ -258,9 +244,9 @@ describe('RPC 429 backoff — applies in both modes', () => {
   });
 
   it('backs off on a rate-limit error in catch-up mode and retries the same batch', async () => {
-    process.env.REINDEX_CATCHUP_THRESHOLD = '50';
-    process.env.REINDEX_CATCHUP_BATCH_SIZE = '200';
-    process.env.REINDEX_RATE_LIMIT_BACKOFF_MS = '100';
+    config.reindex.catchupThreshold = 50;
+    config.reindex.catchupBatchSize = 200;
+    config.reindex.rateLimitBackoffMs = 100;
 
     let callCount = 0;
     mockGetEvents.mockImplementation(async () => {
@@ -279,7 +265,7 @@ describe('RPC 429 backoff — applies in both modes', () => {
   });
 
   it('does not permanently abort the job on a 429 error', async () => {
-    process.env.REINDEX_RATE_LIMIT_BACKOFF_MS = '100';
+    config.reindex.rateLimitBackoffMs = 100;
 
     mockGetEvents
       .mockRejectedValueOnce(new Error('429 rate limited'))
@@ -295,9 +281,9 @@ describe('RPC 429 backoff — applies in both modes', () => {
 // ── Batch size hard ceiling ───────────────────────────────────────────────────
 
 describe('catch-up batch size hard ceiling', () => {
-  it('caps REINDEX_CATCHUP_BATCH_SIZE at 1000 even if env var exceeds it', async () => {
-    process.env.REINDEX_CATCHUP_THRESHOLD = '100';
-    process.env.REINDEX_CATCHUP_BATCH_SIZE = '99999'; // way above ceiling
+  it('caps REINDEX_CATCHUP_BATCH_SIZE at 1000 even if configured value exceeds it', async () => {
+    config.reindex.catchupThreshold = 100;
+    config.reindex.catchupBatchSize = 99999; // way above ceiling
 
     const callLedgerStarts: number[] = [];
     mockGetEvents.mockImplementation(async ({ startLedger }: { startLedger: number }) => {
@@ -325,9 +311,9 @@ describe('mode transition logging', () => {
     const loggerModule = require('../../src/utils/logger');
     const infoSpy = jest.spyOn(loggerModule.logger, 'info');
 
-    process.env.REINDEX_CATCHUP_THRESHOLD = '100';
-    process.env.REINDEX_CATCHUP_BATCH_SIZE = '150';
-    process.env.REINDEX_BATCH_SIZE = '50';
+    config.reindex.catchupThreshold = 100;
+    config.reindex.catchupBatchSize = 150;
+    config.reindex.batchSize = 50;
 
     mockGetEvents.mockResolvedValue({ events: [] });
 

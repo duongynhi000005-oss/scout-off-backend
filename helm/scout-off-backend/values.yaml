@@ -152,10 +152,27 @@ ingress:
         - api.scoutoff.io
 
 # -----------------------------------------------------------------------------
+# Startup probe
+#
+# Protects slow-starting pods (DB migrations, Redis connection, token blocklist
+# warm-up, indexer backfill) from being killed by the liveness probe before
+# startup finishes. Allows up to failureThreshold × periodSeconds = 150s.
+# Set startupProbe: null to disable.
+# -----------------------------------------------------------------------------
+startupProbe:
+  httpGet:
+    path: /health/liveness
+    port: http
+  periodSeconds: 5
+  failureThreshold: 30
+  timeoutSeconds: 5
+
+# -----------------------------------------------------------------------------
 # Liveness probe
 #
 # Kubernetes restarts a container when liveness fails failureThreshold times.
 # /health/liveness is a lightweight "am I alive?" check (no external deps).
+# With startupProbe enabled, initialDelaySeconds can be kept low.
 # -----------------------------------------------------------------------------
 livenessProbe:
   httpGet:

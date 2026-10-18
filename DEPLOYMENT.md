@@ -443,6 +443,7 @@ Common overrides:
 | `resources.requests.memory` | `256Mi` | Memory request |
 | `resources.limits.memory` | `512Mi` | Memory limit |
 | `secretName` | `scout-off-secrets` | Name of the Kubernetes Secret |
+| `startupProbe` | `/health/liveness` (`30 × 5s = 150s`) | Startup probe protecting slow initialization (migrations, Redis/blocklist warm-up); set `startupProbe: null` to disable. With `startupProbe` active, `livenessProbe.initialDelaySeconds` can be lowered safely. |
 | `env.NODE_ENV` | `production` | Node environment |
 | `env.DB_DRIVER` | `sqlite` | `sqlite` or `postgres` |
 

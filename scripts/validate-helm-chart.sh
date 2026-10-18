@@ -174,4 +174,15 @@ if grep -q 'emptyDir: {}' <<<"${out}"; then
 fi
 pass "configured data PVC replaces the default emptyDir"
 
+out=$(render)
+grep -q 'startupProbe:' <<<"${out}" \
+  || fail "default startupProbe is not rendered"
+pass "default startupProbe renders"
+
+out=$(render --set startupProbe=null)
+if grep -q 'startupProbe:' <<<"${out}"; then
+  fail "startupProbe rendered despite startupProbe=null override"
+fi
+pass "startupProbe can be disabled with startupProbe=null"
+
 echo "[validate-helm-chart] All Helm chart consistency checks passed."

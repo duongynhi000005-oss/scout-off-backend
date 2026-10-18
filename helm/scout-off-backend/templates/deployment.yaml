@@ -205,6 +205,13 @@ spec:
                   name: {{ .Values.secretName }}
                   key: REDIS_URL
                   optional: true
+          # ── Startup probe ─────────────────────────────────────────────────────
+          # Holds off liveness/readiness checks while migrations and blocklist
+          # warm-up complete during startup. Disabled when set to null.
+          {{- with .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           # ── Liveness probe ────────────────────────────────────────────────────
           # Restarts the container if this fails failureThreshold times in a row.
           # /health/liveness is a lightweight check with no external dependencies.

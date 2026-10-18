@@ -407,13 +407,18 @@ preserved in the payload, so subscriber-side dedup works across replays.
 This never throws back into the caller that triggered the event — a broken or
 slow subscriber cannot fail an unrelated request (e.g. player registration).
 
-### Alerting and metrics (#1131)
+### Automatic retries, delivery retention, and metrics (#1131, #1524)
 
-The dead-letter retry job refreshes a per-subscription Prometheus gauge and
-evaluates configurable thresholds on every sweep:
+On server startup (`src/index.ts`), two background webhook housekeeping jobs are scheduled and stopped cleanly during graceful shutdown:
+
+1. **Dead-letter auto-retry job (`startDeadLetterRetryJob`)**: Runs every 5 minutes when `WEBHOOK_DLQ_AUTO_RETRY_ENABLED` is `true` (default). Retries pending dead-letter rows older than 10 minutes up to `MAX_AUTO_RETRIES` (5) times using atomic claims, refreshes the per-subscription Prometheus gauge, and evaluates DLQ alert thresholds.
+2. **Delivery history prune job (`pruneWebhookDeliveries`)**: Runs every `WEBHOOK_DELIVERY_PRUNE_INTERVAL_MS` (default `3600000` = 1 hour) and deletes `webhook_deliveries` rows older than `WEBHOOK_DELIVERY_RETENTION_DAYS` (default `30` days) across both SQLite and PostgreSQL via `getDriver()`.
 
 | Env | Default | Meaning |
 | --- | --- | --- |
+| `WEBHOOK_DLQ_AUTO_RETRY_ENABLED` | `true` | Enable background dead-letter auto-retry job |
+| `WEBHOOK_DELIVERY_RETENTION_DAYS` | `30` | Retention period (days) for `webhook_deliveries` history rows |
+| `WEBHOOK_DELIVERY_PRUNE_INTERVAL_MS` | `3600000` | Interval (ms) between `webhook_deliveries` prune sweeps |
 | `WEBHOOK_DLQ_SIZE_THRESHOLD` | `100` | Absolute queue depth |
 | `WEBHOOK_DLQ_RATE_THRESHOLD` | `50` | Inserts within the rate window |
 | `WEBHOOK_DLQ_RATE_WINDOW_MS` | `300000` | Sliding window for the rate check |
@@ -428,6 +433,7 @@ Metrics (see `GET /metrics`):
 - `scout_off_webhook_dead_letters_total{subscription_id}` — gauge of current depth
 - `scout_off_webhook_dead_letters_inserted_total` — lifetime inserts
 - `scout_off_webhook_retry_success_total` — successful auto-retries
+- `scout_off_webhook_deliveries_pruned_total` — lifetime `webhook_deliveries` rows pruned
 
 ## Secret Rotation
 

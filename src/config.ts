@@ -507,6 +507,35 @@ const config = {
     ),
     adminNotifyUrl: process.env.PLATFORM_ADMIN_NOTIFY_URL ?? '',
   },
+  webhookDeadLetter: {
+    autoRetryEnabled:
+      process.env.WEBHOOK_DLQ_AUTO_RETRY_ENABLED !== 'false' &&
+      process.env.WEBHOOK_DEAD_LETTER_AUTO_RETRY_ENABLED !== 'false',
+    deliveryRetentionDays: parseNumericEnv(
+      'WEBHOOK_DELIVERY_RETENTION_DAYS',
+      process.env.WEBHOOK_DELIVERY_RETENTION_DAYS,
+      30,
+      { min: 1, integer: true },
+    ),
+    deliveryPruneIntervalMs: parseNumericEnv(
+      'WEBHOOK_DELIVERY_PRUNE_INTERVAL_MS',
+      process.env.WEBHOOK_DELIVERY_PRUNE_INTERVAL_MS,
+      3600000,
+      { min: 1000, integer: true },
+    ),
+  },
+  webhookDeliveryRetentionDays: parseNumericEnv(
+    'WEBHOOK_DELIVERY_RETENTION_DAYS',
+    process.env.WEBHOOK_DELIVERY_RETENTION_DAYS,
+    30,
+    { min: 1, integer: true },
+  ),
+  webhookDeliveryPruneIntervalMs: parseNumericEnv(
+    'WEBHOOK_DELIVERY_PRUNE_INTERVAL_MS',
+    process.env.WEBHOOK_DELIVERY_PRUNE_INTERVAL_MS,
+    3600000,
+    { min: 1000, integer: true },
+  ),
   // Symmetric key (32-byte hex, e.g. `openssl rand -hex 32`) used to encrypt
   // webhook_subscriptions.secret at rest (#686). Required in production —
   // see src/utils/webhookSecretCipher.ts and docs/secrets-rotation.md.

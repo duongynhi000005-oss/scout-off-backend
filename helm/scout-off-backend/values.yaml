@@ -278,6 +278,9 @@ env:
   # Webhook delivery (non-sensitive settings — URL and secrets live in the Secret)
   WEBHOOK_ENABLED: "false"
   WEBHOOK_TIMEOUT_MS: "10000"
+  WEBHOOK_DLQ_AUTO_RETRY_ENABLED: "true"
+  WEBHOOK_DELIVERY_RETENTION_DAYS: "30"
+  WEBHOOK_DELIVERY_PRUNE_INTERVAL_MS: "3600000"
   # Slow-query warning threshold in ms. Default: 50.
   SLOW_QUERY_THRESHOLD_MS: "50"
   # Admin multi-sig action TTL in ms. Default: 3600000 (1 hour).

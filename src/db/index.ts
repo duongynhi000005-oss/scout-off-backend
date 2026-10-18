@@ -12,7 +12,7 @@ import { decryptField, encryptField } from '../utils/fieldCipher';
 import { DbDriver } from './driver';
 import { SqliteDriver } from './sqlite-driver';
 import { PostgresDriver } from './postgres-driver';
-import { observeDbQueryDuration } from '../middleware/metrics';
+import { observeDbQueryDuration, incrementWebhookDeliveriesPrunedTotal } from '../middleware/metrics';
 import {
   createBetterSqlite3LoadError,
   isBetterSqlite3LoadFailure,
@@ -3504,14 +3504,20 @@ export function getWebhookDeliverySummary(
 
 /**
  * Delete delivery records older than retentionMs (default 30 days).
- * Call periodically (e.g., from the indexer poll loop) to bound table growth.
+ * Call periodically to bound table growth.
  * Returns the number of rows deleted.
  */
-export function pruneWebhookDeliveries(retentionMs = 30 * 24 * 60 * 60 * 1000): number {
+export async function pruneWebhookDeliveries(
+  retentionMs = config.webhookDeliveryRetentionDays * 24 * 60 * 60 * 1000,
+): Promise<number> {
   const cutoff = Date.now() - retentionMs;
   const sql = 'DELETE FROM webhook_deliveries WHERE created_at < ?';
-  return timedQuery(sql, () => {
-    const info = getDb().prepare(sql).run(cutoff);
+  return timedQueryAsync(sql, async () => {
+    const info = await getDriver().run(sql, [cutoff]);
+    if (info.changes > 0 && typeof incrementWebhookDeliveriesPrunedTotal === 'function') {
+      incrementWebhookDeliveriesPrunedTotal(info.changes);
+    }
+    logger.info(`[webhooks] pruned ${info.changes} webhook delivery record(s)`);
     return info.changes;
   });
 }

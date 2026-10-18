@@ -4,11 +4,10 @@ initTracing();
 import app, { setDraining } from "./app";
 import config from "./config";
 import { logger } from "./utils/logger";
-import { initDb, closeDb } from "./db";
+import { initDb, closeDb, fetchLastIndexedLedger, persistLastIndexedLedger, pruneWebhookDeliveries } from "./db";
 import { stellarHealth } from "./services/stellar";
 import { checkHealth, retryPendingPins, reconcilePendingPins } from "./services/ipfs";
 import { indexEvents } from "./services/indexer";
-import { fetchLastIndexedLedger, persistLastIndexedLedger } from "./db";
 import { initBlocklist } from "./services/tokenBlocklist";
 import { startDecayTimer } from "./services/ipReputation";
 import {
@@ -24,6 +23,10 @@ import { runTierDivergenceCheck } from "./services/tierDivergenceJob";
 import { getTierDivergenceTotal } from "./services/tierDivergenceJob";
 import { setTierDivergenceGetter } from "./middleware/metrics";
 import { drainAllSessions, setAcceptingSseSessions } from "./routes/events";
+import {
+  startDeadLetterRetryJob,
+  stopDeadLetterRetryJob,
+} from "./services/webhookDeadLetterJob";
 import http from "http";
 
 // Database initialization is now async - must be awaited
@@ -69,7 +72,7 @@ async function start() {
   await startServer();
 }
 
-async function startServer() {
+export async function startServer() {
   const server = app.listen(config.port, () => {
     logger.info(
       `ScoutOff backend running on port ${config.port} [${config.network}]`,
@@ -168,6 +171,26 @@ async function startServer() {
   runDivergenceCheck();
   const divergenceInterval = setInterval(runDivergenceCheck, config.tierDivergence.intervalMs);
 
+  // Background retry job for the webhook dead-letter queue (#1524)
+  const stopDeadLetterJob = config.webhookDeadLetter.autoRetryEnabled
+    ? startDeadLetterRetryJob()
+    : () => stopDeadLetterRetryJob();
+
+  // Scheduled pruning of webhook_deliveries older than configured retention (#1524)
+  const pruneDeliveries = withJobTracking(async () => {
+    try {
+      const retentionMs = config.webhookDeliveryRetentionDays * 24 * 60 * 60 * 1000;
+      await pruneWebhookDeliveries(retentionMs);
+    } catch (err) {
+      logger.error("Webhook delivery prune error:", (err as Error).message);
+    }
+  });
+
+  const webhookPruneInterval = setInterval(
+    pruneDeliveries,
+    config.webhookDeliveryPruneIntervalMs,
+  );
+
   // ── Graceful shutdown ──────────────────────────────────────────────────────
   // Ordered drain sequence (#1315):
   //   1. Flip draining flag  → readiness returns 503 immediately
@@ -217,6 +240,8 @@ async function startServer() {
     clearInterval(retryInterval);
     clearInterval(reconcileInterval);
     clearInterval(divergenceInterval);
+    clearInterval(webhookPruneInterval);
+    stopDeadLetterJob();
 
     // Step 4: await in-flight job executions (bounded to 60 % of total timeout).
     if (inFlightJobs > 0) {
@@ -304,9 +329,13 @@ async function startServer() {
     shutdown("uncaughtException");
     process.exitCode = 1;
   });
+
+  return { server, shutdown };
 }
 
-start().catch((err) => {
-  logger.error("Unhandled startup error:", err);
-  process.exit(1);
-});
+if (require.main === module) {
+  start().catch((err) => {
+    logger.error("Unhandled startup error:", err);
+    process.exit(1);
+  });
+}

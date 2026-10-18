@@ -72,7 +72,7 @@ describe('webhook delivery DB helpers', () => {
     expect(summary.last_success_at).not.toBeNull();
   });
 
-  it('pruneWebhookDeliveries removes old rows', () => {
+  it('pruneWebhookDeliveries removes old rows and increments pruned metric', async () => {
     const sub = `test-prune-${Date.now()}`;
 
     // Insert a "very old" row by writing directly with a past timestamp
@@ -87,7 +87,7 @@ describe('webhook delivery DB helpers', () => {
     });
 
     // With 0ms retention everything should be pruned
-    const pruned = pruneWebhookDeliveries(0);
+    const pruned = await pruneWebhookDeliveries(0);
     expect(pruned).toBeGreaterThanOrEqual(1);
   });
 });

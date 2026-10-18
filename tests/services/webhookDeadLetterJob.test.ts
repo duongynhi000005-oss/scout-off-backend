@@ -253,9 +253,10 @@ describe('webhookDeadLetterJob — scheduler', () => {
 
   it('starts and stops correctly', () => {
     expect(isDeadLetterJobRunning()).toBe(false);
-    startDeadLetterRetryJob();
+    const stop = startDeadLetterRetryJob();
+    expect(typeof stop).toBe('function');
     expect(isDeadLetterJobRunning()).toBe(true);
-    stopDeadLetterRetryJob();
+    stop();
     expect(isDeadLetterJobRunning()).toBe(false);
   });
 

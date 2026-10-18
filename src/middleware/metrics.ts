@@ -273,11 +273,13 @@ export function getStuckPendingPinsCount(): number {
 export interface WebhookCounters {
   deadLettersTotal: number;
   retrySuccessTotal: number;
+  deliveriesPrunedTotal: number;
 }
 
 export const webhookCountersStore: WebhookCounters = {
   deadLettersTotal: 0,
   retrySuccessTotal: 0,
+  deliveriesPrunedTotal: 0,
 };
 
 /** Per-subscription gauge for current dead-letter queue depth. */
@@ -302,6 +304,13 @@ export function incrementWebhookDeadLettersTotal(): void {
 /** Increment webhook_retry_success_total counter. */
 export function incrementWebhookRetrySuccessTotal(): void {
   webhookCountersStore.retrySuccessTotal += 1;
+}
+
+/** Increment scout_off_webhook_deliveries_pruned_total counter (#1524). */
+export function incrementWebhookDeliveriesPrunedTotal(count = 1): void {
+  if (count > 0) {
+    webhookCountersStore.deliveriesPrunedTotal += count;
+  }
 }
 
 /** Returns a snapshot of webhook counters. */
@@ -346,6 +355,7 @@ export function resetMetrics(): void {
   cacheCountsStore.evictions = 0;
   cacheInvalidationStore.total = 0;
   stuckPendingPinsCount = 0;
+  webhookCountersStore.deliveriesPrunedTotal = 0;
   resetIpReputationCounters();
 }
 
@@ -587,6 +597,9 @@ export function serializeMetrics(extras: SerializeMetricsExtras = {}): string {
   lines.push('# HELP scout_off_webhook_retry_success_total Successful dead-letter auto-retries');
   lines.push('# TYPE scout_off_webhook_retry_success_total counter');
   lines.push(`scout_off_webhook_retry_success_total ${webhook.retrySuccessTotal}`);
+  lines.push('# HELP scout_off_webhook_deliveries_pruned_total Total webhook delivery history rows pruned');
+  lines.push('# TYPE scout_off_webhook_deliveries_pruned_total counter');
+  lines.push(`scout_off_webhook_deliveries_pruned_total ${webhook.deliveriesPrunedTotal}`);
 
   // IP reputation counters.
   lines.push('# HELP ip_reputation_blocked_total Total number of requests blocked by IP reputation scoring');

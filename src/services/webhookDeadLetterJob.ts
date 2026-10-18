@@ -207,13 +207,14 @@ function scheduleNext(): void {
 /**
  * Start the background dead-letter retry job.
  * Safe to call multiple times — subsequent calls are no-ops if the job is
- * already running.
+ * already running. Returns a stop function for graceful shutdown.
  */
-export function startDeadLetterRetryJob(): void {
-  if (_nextTimeout !== null) return;
+export function startDeadLetterRetryJob(): () => void {
+  if (_nextTimeout !== null) return stopDeadLetterRetryJob;
   _stopped = false;
   logger.info('[webhooks] dead-letter retry job started');
   scheduleNext();
+  return stopDeadLetterRetryJob;
 }
 
 /**

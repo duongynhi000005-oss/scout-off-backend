@@ -361,6 +361,10 @@ describe('parseNumericEnv validation', () => {
     'EVIDENCE_MAX_BYTES',
     'ADMIN_ACTION_TTL_MS',
     'COMPRESSION_THRESHOLD',
+    'MILESTONE_RATE_WINDOW_MS',
+    'MILESTONE_RATE_MAX',
+    'MILESTONE_LOADER_CONCURRENCY',
+    'SLOW_QUERY_THRESHOLD_MS',
   ];
 
   beforeEach(() => {
@@ -649,4 +653,29 @@ describe('parseNumericEnv validation', () => {
     expect(cfg.compressionThresholdBytes).toBe(512);
     delete process.env.COMPRESSION_THRESHOLD_BYTES;
   });
+
+  // ── MILESTONE_RATE_* / MILESTONE_LOADER_CONCURRENCY / SLOW_QUERY_THRESHOLD_MS ─
+
+  it('MILESTONE_RATE_WINDOW_MS: 999 is below min (1000) and throws', async () => {
+    process.env.MILESTONE_RATE_WINDOW_MS = '999';
+    await expectThrowsContaining('MILESTONE_RATE_WINDOW_MS');
+  });
+
+  it('MILESTONE_RATE_MAX: 0 is below min (1) and throws', async () => {
+    process.env.MILESTONE_RATE_MAX = '0';
+    await expectThrowsContaining('MILESTONE_RATE_MAX');
+  });
+
+  it('MILESTONE_LOADER_CONCURRENCY: 0 is below min (1) and 101 exceeds max (100)', async () => {
+    process.env.MILESTONE_LOADER_CONCURRENCY = '0';
+    await expectThrowsContaining('MILESTONE_LOADER_CONCURRENCY');
+    process.env.MILESTONE_LOADER_CONCURRENCY = '101';
+    await expectThrowsContaining('MILESTONE_LOADER_CONCURRENCY');
+  });
+
+  it('SLOW_QUERY_THRESHOLD_MS: -1 is below min (0) and throws', async () => {
+    process.env.SLOW_QUERY_THRESHOLD_MS = '-1';
+    await expectThrowsContaining('SLOW_QUERY_THRESHOLD_MS');
+  });
 });
+

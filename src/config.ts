@@ -547,6 +547,12 @@ const config = {
     windowMs: parseNumericEnv('WEBHOOK_TEST_RATE_LIMIT_WINDOW_MS', process.env.WEBHOOK_TEST_RATE_LIMIT_WINDOW_MS, 60000, { min: 1, integer: true }),
     max: parseNumericEnv('WEBHOOK_TEST_RATE_LIMIT_MAX', process.env.WEBHOOK_TEST_RATE_LIMIT_MAX, process.env.NODE_ENV === 'test' ? 1000 : 5, { min: 1, integer: true }),
   },
+  // Per-IP rate limit on POST /api/validators/milestone (distinct from
+  // milestonePlayerRateLimit below, which caps submissions per target playerId).
+  milestoneRateLimit: {
+    windowMs: parseNumericEnv('MILESTONE_RATE_WINDOW_MS', process.env.MILESTONE_RATE_WINDOW_MS, 60000, { min: 1000, integer: true }),
+    max: parseNumericEnv('MILESTONE_RATE_MAX', process.env.MILESTONE_RATE_MAX, 10, { min: 1, integer: true }),
+  },
   // Per-player milestone submission rate limit (#1137): guards against a
   // validator (or compromised key) flooding a single player's milestone history.
   // Default: 10 submissions per player per hour.
@@ -749,7 +755,10 @@ const config = {
 
   // ── GraphQL DataLoader concurrency ────────────────────────────────────
   /** Max in-flight RPC calls for the milestone GraphQL DataLoader. */
-  milestoneLoaderConcurrency: parseNumericEnv('MILESTONE_LOADER_CONCURRENCY', process.env.MILESTONE_LOADER_CONCURRENCY, 8, { min: 1, integer: true }),
+  milestoneLoaderConcurrency: parseNumericEnv('MILESTONE_LOADER_CONCURRENCY', process.env.MILESTONE_LOADER_CONCURRENCY, 8, { min: 1, max: 100, integer: true }),
+  graphql: {
+    milestoneLoaderConcurrency: parseNumericEnv('MILESTONE_LOADER_CONCURRENCY', process.env.MILESTONE_LOADER_CONCURRENCY, 8, { min: 1, max: 100, integer: true }),
+  },
 
   // ── Reindexing / catch-up mode ────────────────────────────────────────
   /** Ledger lag threshold for entering catch-up mode (ledgers). */
@@ -776,6 +785,9 @@ const config = {
   // ── Database query monitoring ─────────────────────────────────────────
   /** Log queries slower than this threshold (ms). */
   slowQueryThresholdMs: parseNumericEnv('SLOW_QUERY_THRESHOLD_MS', process.env.SLOW_QUERY_THRESHOLD_MS, 50, { min: 0, integer: true }),
+  db: {
+    slowQueryThresholdMs: parseNumericEnv('SLOW_QUERY_THRESHOLD_MS', process.env.SLOW_QUERY_THRESHOLD_MS, 50, { min: 0, integer: true }),
+  },
 
   // ── Circuit breakers ──────────────────────────────────────────────────
   // Default circuit breaker thresholds for generic outbound calls (Stellar RPC, etc.).

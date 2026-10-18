@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import config from '../../src/config';
 import { timedQuery } from '../../src/db';
 import { logger } from '../../src/utils/logger';
 import { SqliteDriver } from '../../src/db/sqlite-driver';
@@ -9,15 +10,16 @@ describe('timedQuery slow query logging', () => {
 
   beforeEach(() => {
     warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => false);
+    config.db.slowQueryThresholdMs = 50;
   });
 
   afterEach(() => {
     warnSpy.mockRestore();
-    delete process.env.SLOW_QUERY_THRESHOLD_MS;
+    config.db.slowQueryThresholdMs = 50;
   });
 
   it('logs a warning when the query exceeds the threshold', () => {
-    process.env.SLOW_QUERY_THRESHOLD_MS = '0';
+    config.db.slowQueryThresholdMs = 0;
     const sql = 'SELECT 1';
     timedQuery(sql, () => 42);
     expect(warnSpy).toHaveBeenCalledTimes(1);
@@ -26,7 +28,7 @@ describe('timedQuery slow query logging', () => {
   });
 
   it('includes duration_ms in the structured log object', () => {
-    process.env.SLOW_QUERY_THRESHOLD_MS = '0';
+    config.db.slowQueryThresholdMs = 0;
     timedQuery('SELECT slow', () => null);
     const logged = warnSpy.mock.calls[0][0];
     expect(typeof logged.duration_ms).toBe('number');
@@ -34,40 +36,40 @@ describe('timedQuery slow query logging', () => {
   });
 
   it('includes row_count in the structured log object', () => {
-    process.env.SLOW_QUERY_THRESHOLD_MS = '0';
+    config.db.slowQueryThresholdMs = 0;
     timedQuery('SELECT rows', () => [{ id: 1 }, { id: 2 }]);
     const logged = warnSpy.mock.calls[0][0];
     expect(logged.row_count).toBe(2);
   });
 
   it('does not log when the query is faster than the threshold', () => {
-    process.env.SLOW_QUERY_THRESHOLD_MS = '999999';
+    config.db.slowQueryThresholdMs = 999999;
     timedQuery('SELECT fast', () => 'ok');
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
   it('returns the query result unchanged', () => {
-    process.env.SLOW_QUERY_THRESHOLD_MS = '999999';
+    config.db.slowQueryThresholdMs = 999999;
     const result = timedQuery('SELECT 1', () => [{ id: 1 }]);
     expect(result).toEqual([{ id: 1 }]);
   });
 
   it('sets row_count to -1 for null results', () => {
-    process.env.SLOW_QUERY_THRESHOLD_MS = '0';
+    config.db.slowQueryThresholdMs = 0;
     timedQuery('SELECT null', () => null);
     const logged = warnSpy.mock.calls[0][0];
     expect(logged.row_count).toBe(-1);
   });
 
   it('sets row_count to the changes count for RunResult-like objects', () => {
-    process.env.SLOW_QUERY_THRESHOLD_MS = '0';
+    config.db.slowQueryThresholdMs = 0;
     timedQuery('UPDATE x SET y=1', () => ({ changes: 3, lastInsertRowid: 0 }));
     const logged = warnSpy.mock.calls[0][0];
     expect(logged.row_count).toBe(3);
   });
 
   it('sets row_count to 1 for scalar results', () => {
-    process.env.SLOW_QUERY_THRESHOLD_MS = '0';
+    config.db.slowQueryThresholdMs = 0;
     timedQuery('SELECT COUNT(*)', () => 42);
     const logged = warnSpy.mock.calls[0][0];
     expect(logged.row_count).toBe(1);
@@ -86,15 +88,16 @@ describe('timedQuery slow query detection with a deliberately slow operation', (
 
   beforeEach(() => {
     warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => false);
+    config.db.slowQueryThresholdMs = 50;
   });
 
   afterEach(() => {
     warnSpy.mockRestore();
-    delete process.env.SLOW_QUERY_THRESHOLD_MS;
+    config.db.slowQueryThresholdMs = 50;
   });
 
   it('triggers a warning when the operation takes longer than the threshold', () => {
-    process.env.SLOW_QUERY_THRESHOLD_MS = '50';
+    config.db.slowQueryThresholdMs = 50;
 
     // Simulate a slow DB call that takes ~100 ms by busy-waiting inside the
     // timedQuery callback.  This avoids any dependency on sqlite_sleep
@@ -119,7 +122,7 @@ describe('timedQuery slow query detection with a deliberately slow operation', (
     const db = new Database(':memory:');
     await runMigrations(new SqliteDriver(db));
 
-    process.env.SLOW_QUERY_THRESHOLD_MS = '50';
+    config.db.slowQueryThresholdMs = 50;
 
     // Run a real query whose callback we stretch past the threshold.
     const rows = timedQuery('SELECT * FROM players', () => {
@@ -140,3 +143,4 @@ describe('timedQuery slow query detection with a deliberately slow operation', (
     db.close();
   });
 });
+

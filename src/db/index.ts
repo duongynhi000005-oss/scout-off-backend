@@ -43,7 +43,7 @@ function withDbSpan<T>(name: string, sql: string, fn: () => T): T {
 }
 
 function slowQueryThresholdMs(): number {
-  return parseInt(process.env.SLOW_QUERY_THRESHOLD_MS ?? '50', 10);
+  return config.db.slowQueryThresholdMs;
 }
 
 /**

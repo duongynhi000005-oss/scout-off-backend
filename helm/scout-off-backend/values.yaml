@@ -284,6 +284,11 @@ env:
   ADMIN_ACTION_TTL_MS: "3600000"
   # Player cache TTL in ms. Default: 60000 (1 min).
   PLAYER_CACHE_TTL_MS: "60000"
+  # Milestone submission rate limiting (default: 10 per 60000ms)
+  MILESTONE_RATE_WINDOW_MS: "60000"
+  MILESTONE_RATE_MAX: "10"
+  # Max in-flight RPC calls for the milestone GraphQL DataLoader. Default: 8.
+  MILESTONE_LOADER_CONCURRENCY: "8"
 
 # -----------------------------------------------------------------------------
 # Pod annotations

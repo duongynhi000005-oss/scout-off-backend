@@ -18,6 +18,7 @@ jest.mock('../../src/services/stellar', () => ({
   queryMilestones: jest.fn(),
 }));
 
+import config from '../../src/config';
 import { queryEvents } from '../../src/db';
 import { queryMilestones } from '../../src/services/stellar';
 import { createLoaders } from '../../src/graphql/loaders';
@@ -47,6 +48,7 @@ function onChainMilestone(milestoneId: string) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  config.graphql.milestoneLoaderConcurrency = 8;
 });
 
 describe('batchLoadMilestones', () => {
@@ -96,8 +98,7 @@ describe('batchLoadMilestones', () => {
     it('never exceeds MILESTONE_LOADER_CONCURRENCY concurrent RPC calls', async () => {
       const LIMIT = 4;
       const PLAYERS = 20;
-      const originalEnv = process.env.MILESTONE_LOADER_CONCURRENCY;
-      process.env.MILESTONE_LOADER_CONCURRENCY = String(LIMIT);
+      config.graphql.milestoneLoaderConcurrency = LIMIT;
 
       mockQueryEvents.mockReturnValue([]);
 
@@ -124,18 +125,10 @@ describe('batchLoadMilestones', () => {
 
       expect(mockQueryMilestones).toHaveBeenCalledTimes(PLAYERS);
       expect(maxInflight).toBeLessThanOrEqual(LIMIT);
-
-      // Restore env
-      if (originalEnv === undefined) {
-        delete process.env.MILESTONE_LOADER_CONCURRENCY;
-      } else {
-        process.env.MILESTONE_LOADER_CONCURRENCY = originalEnv;
-      }
     });
 
     it('default concurrency limit is 8 when env var is not set', async () => {
       const PLAYERS = 20;
-      delete process.env.MILESTONE_LOADER_CONCURRENCY;
 
       mockQueryEvents.mockReturnValue([]);
 
@@ -162,7 +155,7 @@ describe('batchLoadMilestones', () => {
 
     it('indexed-events path (step 1) is unaffected by concurrency limit', async () => {
       const PLAYERS = 5;
-      process.env.MILESTONE_LOADER_CONCURRENCY = '2';
+      config.graphql.milestoneLoaderConcurrency = 2;
 
       mockQueryEvents.mockReturnValue(
         PLAYERS > 0
@@ -185,8 +178,7 @@ describe('batchLoadMilestones', () => {
           ]),
         );
       }
-
-      delete process.env.MILESTONE_LOADER_CONCURRENCY;
     });
   });
 });
+

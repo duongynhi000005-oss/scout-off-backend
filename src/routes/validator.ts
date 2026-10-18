@@ -13,13 +13,14 @@ import { requireWalletOwner } from '../middleware/requireOwner';
 import { validateBody, validateQuery } from '../middleware/validate';
 import { rateLimit, playerRateLimit } from '../middleware/rateLimit';
 import { methodNotAllowed } from '../middleware/methodNotAllowed';
+import config from '../config';
 
 const router = Router();
 
 const milestoneRateLimit = rateLimit({
   name: 'validator-milestone',
-  windowMs: Number(process.env.MILESTONE_RATE_WINDOW_MS) || 60_000,
-  max: Number(process.env.MILESTONE_RATE_MAX) || 10,
+  windowMs: config.milestoneRateLimit.windowMs,
+  max: config.milestoneRateLimit.max,
 });
 
 /**

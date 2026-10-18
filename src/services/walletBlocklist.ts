@@ -27,6 +27,7 @@
  */
 
 import { EventEmitter } from 'events';
+import config from '../config';
 import { logger } from '../utils/logger';
 import { getRedisClient } from './redis';
 import {
@@ -39,7 +40,7 @@ import {
 // ─── Configuration ────────────────────────────────────────────────────────────
 
 /** How long a cached blocklist entry is trusted before a fresh DB read. */
-const CACHE_TTL_MS = parseInt(process.env.WALLET_BLOCKLIST_CACHE_TTL_MS ?? '30000', 10);
+const CACHE_TTL_MS = config.cache.walletBlocklistTtlMs;
 
 /** Redis pub/sub channels for cross-instance security events. */
 const REDIS_CHANNEL_WALLET_BLOCKED = 'security:wallet_blocked';

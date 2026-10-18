@@ -1,3 +1,5 @@
+import config from '../config';
+
 /**
  * Pluggable cache backend interface.
  *
@@ -47,7 +49,7 @@ export class InMemoryCacheStore implements CacheStore {
   private readonly maxSize: number;
 
   constructor() {
-    const parsed = Number(process.env.CACHE_MAX_SIZE);
+    const parsed = Number(config.cache.maxSize);
     this.maxSize = Number.isFinite(parsed) && parsed > 0 ? parsed : 1000;
   }
 

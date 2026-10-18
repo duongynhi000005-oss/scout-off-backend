@@ -252,10 +252,17 @@ env:
   DB_PATH: /data/scout-off.db
   # Platform fee in basis points (100 bps = 1%). Default: 500 (5%).
   PLATFORM_FEE_BPS: "500"
-  # SSE keep-alive interval in ms
+  # SSE configuration
+  # SSE keep-alive interval in ms (default: 15000)
   SSE_KEEPALIVE_INTERVAL_MS: "15000"
   # Maximum concurrent SSE connections (0 = unlimited)
   SSE_MAX_CONNECTIONS: "0"
+  # Maximum concurrent SSE connections per authenticated wallet (default: 5; 0 = unlimited)
+  SSE_MAX_CONNECTIONS_PER_WALLET: "5"
+  # Shared SSE authorization sweep interval in ms (default: 30000)
+  SSE_AUTH_SWEEP_INTERVAL_MS: "30000"
+  # Base reconnect delay sent to SSE clients in ms (default: 5000)
+  SSE_RETRY_MS: "5000"
   # Request timeout in ms
   REQUEST_TIMEOUT_MS: "30000"
   # Rate limiting
@@ -264,6 +271,9 @@ env:
   RATE_LIMIT_MAX: "60"
   AUTH_RATE_LIMIT_WINDOW_MS: "60000"
   AUTH_RATE_LIMIT_MAX: "5"
+  # Milestone submission rate limiting (default: 10 per 60000ms)
+  MILESTONE_RATE_WINDOW_MS: "60000"
+  MILESTONE_RATE_MAX: "10"
   # JWT access token TTL (seconds). Default: 900 = 15 min.
   JWT_ACCESS_TTL_SECONDS: "900"
   # Stellar health check (set false in staging)
@@ -280,10 +290,58 @@ env:
   WEBHOOK_TIMEOUT_MS: "10000"
   # Slow-query warning threshold in ms. Default: 50.
   SLOW_QUERY_THRESHOLD_MS: "50"
+  # Admin settings
+  # Comma-separated IPs/CIDRs allowed on admin routes (empty = allow all; can also be supplied via Secret)
+  ADMIN_IP_ALLOWLIST: ""
   # Admin multi-sig action TTL in ms. Default: 3600000 (1 hour).
   ADMIN_ACTION_TTL_MS: "3600000"
+  # Caching & TTLs
   # Player cache TTL in ms. Default: 60000 (1 min).
   PLAYER_CACHE_TTL_MS: "60000"
+  # Max entries in the in-memory cache store (src/services/inMemoryCacheStore.ts). Default: 1000.
+  CACHE_MAX_ENTRIES: "1000"
+  # Max entries in the pluggable in-memory CacheStore (src/services/cacheStore.ts). Default: 1000.
+  CACHE_MAX_SIZE: "1000"
+  # Max entries in the process-local player cache wrapper. Default: 1000.
+  PLAYER_CACHE_MAX_SIZE: "1000"
+  # Feature-flag lookup cache TTL in ms. Default: 5000.
+  FEATURE_FLAG_CACHE_TTL_MS: "5000"
+  # Wallet-blocklist lookup cache TTL in ms. Default: 30000.
+  WALLET_BLOCKLIST_CACHE_TTL_MS: "30000"
+  # GraphQL DataLoader concurrency
+  # Max in-flight RPC calls for the milestone GraphQL DataLoader. Default: 8.
+  MILESTONE_LOADER_CONCURRENCY: "8"
+  # Circuit breakers
+  # Default circuit breaker failure threshold and reset timeout (ms). Defaults: 5 / 30000.
+  CIRCUIT_BREAKER_FAILURE_THRESHOLD: "5"
+  CIRCUIT_BREAKER_RESET_TIMEOUT_MS: "30000"
+  # IPFS circuit breaker failure threshold and reset timeout (ms). Defaults: 5 / 30000.
+  IPFS_BREAKER_FAILURE_THRESHOLD: "5"
+  IPFS_BREAKER_RESET_TIMEOUT_MS: "30000"
+  # Indexer & reindex tuning
+  # Ledgers held back from chain tip to avoid reorgs. Default: 10.
+  INDEXER_FINALITY_MARGIN: "10"
+  # Ledgers behind tip before a lag warning is logged. Default: 100.
+  INDEXER_LAG_WARN_THRESHOLD: "100"
+  # Ledger lag threshold for switching reindex to catch-up mode. Default: 500.
+  REINDEX_CATCHUP_THRESHOLD: "500"
+  # Ledgers processed per batch in catch-up mode. Default: 500.
+  REINDEX_CATCHUP_BATCH_SIZE: "500"
+  # Ledgers processed per batch in steady-state mode. Default: 100.
+  REINDEX_BATCH_SIZE: "100"
+  # Delay between reindex batches in ms. Default: 50.
+  REINDEX_BATCH_DELAY_MS: "50"
+  # Backoff in ms when RPC returns a rate-limit error during reindex. Default: 2000.
+  REINDEX_RATE_LIMIT_BACKOFF_MS: "2000"
+  # Readiness probe per-component timeouts (ms)
+  READINESS_DB_TIMEOUT_MS: "2000"
+  READINESS_IPFS_TIMEOUT_MS: "5000"
+  READINESS_STELLAR_TIMEOUT_MS: "5000"
+  # Graceful shutdown
+  # Maximum time in ms to drain connections and jobs before forcing exit. Default: 10000.
+  SHUTDOWN_TIMEOUT_MS: "10000"
+  # Optional pre-stop delay in ms before draining begins. Default: 0.
+  SHUTDOWN_PRESTOP_DELAY_MS: "0"
 
 # -----------------------------------------------------------------------------
 # Pod annotations

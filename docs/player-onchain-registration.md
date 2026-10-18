@@ -9,7 +9,23 @@ The API keeps its cuid2 `player_id` as the stable public identifier. The registe
 Migration 030 backfills rows only from unambiguous stored registration events. To check older rows against current register-contract state (including legacy wallet entries), deploy the register contract version exposing `get_player_id`, then run:
 
 ```sh
-npx ts-node --project tsconfig.scripts.json scripts/backfill-player-on-chain-ids.ts
+npm run backfill:on-chain-ids
 ```
 
-The script checks each unmapped wallet and persists only confirmed contract results. Rows without an on-chain registration remain pending; no IDs are inferred from CUIDs, timestamps, or row order.
+### Flags & Environment Variables
+
+| Option | Env Fallback | Default | Description |
+| --- | --- | --- | --- |
+| `--dry-run` | `DRY_RUN=true` | `false` | Queries the register contract and reports `linked` and `pending` counts without writing `on_chain_player_id` updates to the database. |
+| `--batch-size=<n>` | `BACKFILL_BATCH_SIZE` | `100` | Number of unmapped player rows fetched per cursor page (`getPlayersMissingOnChainId`). |
+
+Example dry run with a custom batch size:
+
+```sh
+npm run backfill:on-chain-ids -- --dry-run --batch-size=50
+```
+
+### Idempotency & Expected Runtime
+
+- **Idempotency:** Safe to re-run at any time. The script paginates strictly over rows where `on_chain_player_id IS NULL` (ordered by `player_id` cursor) and only writes when `queryOnChainPlayerId(wallet)` returns a confirmed on-chain ID. Rows without an on-chain registration remain `NULL` (`pending`); no IDs are inferred from CUIDs, timestamps, or row order.
+- **Expected Runtime:** Performs one read-only Soroban RPC simulation (`get_player_id`) per unmapped player wallet (~50–150 ms per wallet depending on RPC latency, or roughly 5–15 seconds per 100 unmapped rows).

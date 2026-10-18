@@ -369,7 +369,7 @@ async function checkReadiness(): Promise<Record<string, ProbeResult>> {
   return services;
 }
 
-app.get('/ready', async (_req, res) => {
+export async function readinessHandler(_req: express.Request, res: express.Response): Promise<void> {
   if (isDraining()) {
     res.status(503).json({ status: 'draining' });
     return;
@@ -381,26 +381,16 @@ app.get('/ready', async (_req, res) => {
   } else {
     res.status(503).json({ status: 'degraded', services });
   }
-});
+}
+
+app.get('/ready', readinessHandler);
 
 // Kubernetes-style liveness and readiness probes
 app.get('/health/liveness', createTimeout(5_000), (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-app.get('/health/readiness', createTimeout(5_000), async (_req, res) => {
-  if (isDraining()) {
-    res.status(503).json({ status: 'draining' });
-    return;
-  }
-  const services = await checkReadiness();
-  const allOk = Object.values(services).every(v => v.status === 'ok' || v.status === 'disabled');
-  if (allOk) {
-    res.json({ status: 'ok', services });
-  } else {
-    res.status(503).json({ status: 'degraded', services });
-  }
-});
+app.get('/health/readiness', createTimeout(5_000), readinessHandler);
 
 // Operator-facing dependency health endpoint reporting version and latency per downstream (admin-gated)
 app.get(

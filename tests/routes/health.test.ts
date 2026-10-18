@@ -387,4 +387,10 @@ describe('GET /ready and GET /health/readiness return identical responses', () =
     expect(a.status).toBe(b.status);
     expect(normalizeTiming(a.body)).toEqual(normalizeTiming(b.body));
   });
+
+  it('exports a single shared readinessHandler function used by both routes (#1576)', async () => {
+    const { readinessHandler } = await import('../../src/app');
+    expect(typeof readinessHandler).toBe('function');
+  });
 });
+

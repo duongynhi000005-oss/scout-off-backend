@@ -179,14 +179,8 @@ async function startServer() {
   //   7. Close Redis, DB, tracing
   //   8. exit 0
 
-  const SHUTDOWN_TIMEOUT_MS = parseInt(
-    process.env.SHUTDOWN_TIMEOUT_MS ?? '10000',
-    10,
-  );
-  const SHUTDOWN_PRESTOP_DELAY_MS = parseInt(
-    process.env.SHUTDOWN_PRESTOP_DELAY_MS ?? '0',
-    10,
-  );
+  const SHUTDOWN_TIMEOUT_MS = config.shutdown.timeoutMs;
+  const SHUTDOWN_PRESTOP_DELAY_MS = config.shutdown.prestopDelayMs;
   let isShuttingDown = false;
 
   const shutdown = async (signal: string) => {

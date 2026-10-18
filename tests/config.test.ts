@@ -361,6 +361,8 @@ describe('parseNumericEnv validation', () => {
     'EVIDENCE_MAX_BYTES',
     'ADMIN_ACTION_TTL_MS',
     'COMPRESSION_THRESHOLD',
+    'SHUTDOWN_TIMEOUT_MS',
+    'SHUTDOWN_PRESTOP_DELAY_MS',
   ];
 
   beforeEach(() => {
@@ -648,5 +650,57 @@ describe('parseNumericEnv validation', () => {
     const cfg = await loadConfig();
     expect(cfg.compressionThresholdBytes).toBe(512);
     delete process.env.COMPRESSION_THRESHOLD_BYTES;
+  });
+
+  // ── SHUTDOWN_TIMEOUT_MS & SHUTDOWN_PRESTOP_DELAY_MS ──────────────────────────
+
+  it('SHUTDOWN_TIMEOUT_MS: defaults to 10000 and SHUTDOWN_PRESTOP_DELAY_MS defaults to 0', async () => {
+    delete process.env.SHUTDOWN_TIMEOUT_MS;
+    delete process.env.SHUTDOWN_PRESTOP_DELAY_MS;
+    const cfg = await loadConfig();
+    expect(cfg.shutdown).toEqual({ timeoutMs: 10000, prestopDelayMs: 0 });
+  });
+
+  it('SHUTDOWN_TIMEOUT_MS: non-numeric string throws naming SHUTDOWN_TIMEOUT_MS', async () => {
+    process.env.SHUTDOWN_TIMEOUT_MS = 'not-a-number';
+    await expectThrowsContaining('SHUTDOWN_TIMEOUT_MS');
+  });
+
+  it('SHUTDOWN_TIMEOUT_MS: 500 is below min (1000) and throws naming SHUTDOWN_TIMEOUT_MS', async () => {
+    process.env.SHUTDOWN_TIMEOUT_MS = '500';
+    await expectThrowsContaining('SHUTDOWN_TIMEOUT_MS');
+  });
+
+  it('SHUTDOWN_TIMEOUT_MS: 700000 exceeds max (600000) and throws naming SHUTDOWN_TIMEOUT_MS', async () => {
+    process.env.SHUTDOWN_TIMEOUT_MS = '700000';
+    await expectThrowsContaining('SHUTDOWN_TIMEOUT_MS');
+  });
+
+  it('SHUTDOWN_PRESTOP_DELAY_MS: non-numeric string throws naming SHUTDOWN_PRESTOP_DELAY_MS', async () => {
+    process.env.SHUTDOWN_PRESTOP_DELAY_MS = 'not-a-number';
+    await expectThrowsContaining('SHUTDOWN_PRESTOP_DELAY_MS');
+  });
+
+  it('SHUTDOWN_PRESTOP_DELAY_MS: -1 is below min (0) and throws naming SHUTDOWN_PRESTOP_DELAY_MS', async () => {
+    process.env.SHUTDOWN_PRESTOP_DELAY_MS = '-1';
+    await expectThrowsContaining('SHUTDOWN_PRESTOP_DELAY_MS');
+  });
+
+  it('SHUTDOWN_PRESTOP_DELAY_MS: 150000 exceeds max (120000) and throws naming SHUTDOWN_PRESTOP_DELAY_MS', async () => {
+    process.env.SHUTDOWN_PRESTOP_DELAY_MS = '150000';
+    await expectThrowsContaining('SHUTDOWN_PRESTOP_DELAY_MS');
+  });
+
+  it('SHUTDOWN_PRESTOP_DELAY_MS >= SHUTDOWN_TIMEOUT_MS throws a clear error', async () => {
+    process.env.SHUTDOWN_TIMEOUT_MS = '10000';
+    process.env.SHUTDOWN_PRESTOP_DELAY_MS = '10000';
+    await expectThrowsContaining('SHUTDOWN_PRESTOP_DELAY_MS');
+  });
+
+  it('SHUTDOWN_TIMEOUT_MS and SHUTDOWN_PRESTOP_DELAY_MS accept valid values when prestop < timeout', async () => {
+    process.env.SHUTDOWN_TIMEOUT_MS = '20000';
+    process.env.SHUTDOWN_PRESTOP_DELAY_MS = '5000';
+    const cfg = await loadConfig();
+    expect(cfg.shutdown).toEqual({ timeoutMs: 20000, prestopDelayMs: 5000 });
   });
 });

@@ -848,7 +848,19 @@ const config = {
    */
   webAuthDomain: process.env.WEB_AUTH_DOMAIN ?? '',
 
+  // ── Graceful shutdown (#1559) ─────────────────────────────────────────
+  shutdown: {
+    timeoutMs: parseNumericEnv('SHUTDOWN_TIMEOUT_MS', process.env.SHUTDOWN_TIMEOUT_MS, 10000, { min: 1000, max: 600000, integer: true }),
+    prestopDelayMs: parseNumericEnv('SHUTDOWN_PRESTOP_DELAY_MS', process.env.SHUTDOWN_PRESTOP_DELAY_MS, 0, { min: 0, max: 120000, integer: true }),
+  },
+
 };
+
+if (config.shutdown.prestopDelayMs >= config.shutdown.timeoutMs) {
+  throw new Error(
+    `Invalid SHUTDOWN_PRESTOP_DELAY_MS (${config.shutdown.prestopDelayMs}): must be less than SHUTDOWN_TIMEOUT_MS (${config.shutdown.timeoutMs}).`,
+  );
+}
 
 export default config;
 

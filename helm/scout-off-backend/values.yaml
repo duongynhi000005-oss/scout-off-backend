@@ -284,6 +284,9 @@ env:
   ADMIN_ACTION_TTL_MS: "3600000"
   # Player cache TTL in ms. Default: 60000 (1 min).
   PLAYER_CACHE_TTL_MS: "60000"
+  # Graceful shutdown timeout and pre-stop delay in ms.
+  SHUTDOWN_TIMEOUT_MS: "10000"
+  SHUTDOWN_PRESTOP_DELAY_MS: "0"
 
 # -----------------------------------------------------------------------------
 # Pod annotations

@@ -52,6 +52,7 @@ Welcome! This guide covers contribution workflows, code standards, and critical 
    - Linting passes: `npm run lint`
    - No security vulnerabilities: `npm audit`
    - Environment is set up: `cp .env.example .env`
+   - Environment variable documentation check passes: `npm run env:check` (`node scripts/validate-env.js` verifies `.env.example` parity in CI; `npm run dev` and `npm start` invoke `node scripts/validate-env.js --runtime` via `predev`/`prestart` to validate runtime variables and `NODE_ENV` against `src/config/constants.json`).
 
 ### Database Migrations
 

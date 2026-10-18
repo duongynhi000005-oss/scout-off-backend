@@ -1,0 +1,6 @@
+{
+  "REQUIRED_RUNTIME_VARS": ["CONTRACT_ID", "JWT_SECRET"],
+  "VALID_NODE_ENVS": ["development", "test", "staging", "production"],
+  "VALID_NETWORKS": ["testnet", "mainnet", "futurenet", "standalone"],
+  "VALID_DB_DRIVERS": ["sqlite", "postgres"]
+}

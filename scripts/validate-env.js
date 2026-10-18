@@ -16,17 +16,13 @@
 const fs = require('fs');
 const path = require('path');
 
-// ─── Required vars that must be present at runtime ───────────────────────────
-const REQUIRED_RUNTIME_VARS = ['CONTRACT_ID', 'JWT_SECRET'];
-
-// Valid NODE_ENV values; defaults to 'development' when unset.
-const VALID_NODE_ENVS = ['development', 'test', 'production'];
-
-// Valid NETWORK values; defaults to 'testnet' when unset.
-const VALID_NETWORKS = ['testnet', 'mainnet', 'futurenet', 'standalone'];
-
-// Valid DB_DRIVER values; defaults to 'sqlite' when unset.
-const VALID_DB_DRIVERS = ['sqlite', 'postgres'];
+// ─── Shared enumerations & required runtime vars (single source of truth) ────
+const {
+  REQUIRED_RUNTIME_VARS,
+  VALID_NODE_ENVS,
+  VALID_NETWORKS,
+  VALID_DB_DRIVERS,
+} = require('../src/config/constants.json');
 
 function validateRuntimeEnv(env = process.env) {
   const errors = [];
@@ -135,6 +131,11 @@ function findStaleExampleKeys(examplePath, srcFiles) {
 if (require.main === module) {
   // ─── Runtime check ────────────────────────────────────────────────────────────
   if (process.argv.includes('--runtime')) {
+    try {
+      require('dotenv').config();
+    } catch {
+      // dotenv is optional if environment variables are injected by the host
+    }
     const errors = validateRuntimeEnv();
 
     if (errors.length) {
@@ -197,6 +198,7 @@ if (require.main === module) {
 module.exports = {
   REQUIRED_RUNTIME_VARS,
   VALID_NODE_ENVS,
+  VALID_NETWORKS,
   VALID_DB_DRIVERS,
   validateRuntimeEnv,
   findStaleExampleKeys,

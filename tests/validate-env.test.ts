@@ -24,6 +24,16 @@ describe('validate-env runtime validation', () => {
     expect(errors).toEqual([]);
   });
 
+  it('should pass on a complete valid config (NODE_ENV=staging)', () => {
+    const env = {
+      NODE_ENV: 'staging',
+      CONTRACT_ID: 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4',
+      JWT_SECRET: 'test-secret',
+    };
+    const errors = validateRuntimeEnv(env);
+    expect(errors).toEqual([]);
+  });
+
   it('should pass when NODE_ENV is unset (defaults to development)', () => {
     const env = {
       CONTRACT_ID: 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4',
@@ -69,8 +79,20 @@ describe('validate-env runtime validation', () => {
     };
     const errors = validateRuntimeEnv(env);
     expect(errors).toContain(
-      'NODE_ENV="invalid_env" is invalid. Must be one of: development, test, production'
+      'NODE_ENV="invalid_env" is invalid. Must be one of: development, test, staging, production'
     );
+  });
+
+  it('shares the exact same enumerations between scripts/validate-env.js and src/config/constants.ts (#1541)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const scriptConsts = require('../scripts/validate-env');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const configConsts = require('../src/config/constants');
+
+    expect(scriptConsts.VALID_NODE_ENVS).toEqual(configConsts.VALID_NODE_ENVS);
+    expect(scriptConsts.VALID_NETWORKS).toEqual(configConsts.VALID_NETWORKS);
+    expect(scriptConsts.VALID_DB_DRIVERS).toEqual(configConsts.VALID_DB_DRIVERS);
+    expect(scriptConsts.REQUIRED_RUNTIME_VARS).toEqual(configConsts.REQUIRED_RUNTIME_VARS);
   });
 
   it('should pass on valid CORS_ALLOWED_ORIGINS', () => {

@@ -1,4 +1,10 @@
 import dotenv from 'dotenv';
+import {
+  NodeEnv,
+  VALID_NODE_ENVS,
+  VALID_NETWORKS as SHARED_VALID_NETWORKS,
+  VALID_DB_DRIVERS,
+} from './config/constants';
 dotenv.config();
 
 function required(name: string): string {
@@ -62,9 +68,8 @@ function parseNumericEnv(
 }
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-type NodeEnv = 'development' | 'test' | 'staging' | 'production';
 
-const VALID_ENVS: ReadonlySet<string> = new Set(['development', 'test', 'staging', 'production']);
+const VALID_ENVS: ReadonlySet<string> = new Set(VALID_NODE_ENVS);
 
 const rawNodeEnv = process.env.NODE_ENV ?? 'development';
 if (!VALID_ENVS.has(rawNodeEnv)) {
@@ -253,7 +258,7 @@ const corsAllowedOrigins =
 // Validate NETWORK and derive networkPassphrase with defaults per network type.
 // Acceptable network values: 'testnet', 'mainnet', 'futurenet', 'standalone'.
 // Default passphrases follow Stellar's convention for each network type.
-const VALID_NETWORKS: ReadonlySet<string> = new Set(['testnet', 'mainnet', 'futurenet', 'standalone']);
+const VALID_NETWORKS: ReadonlySet<string> = new Set(SHARED_VALID_NETWORKS);
 
 const rawNetwork = process.env.NETWORK ?? 'testnet';
 if (!VALID_NETWORKS.has(rawNetwork)) {
@@ -409,10 +414,9 @@ const config = {
   })(),
   dbDriver: (() => {
     const raw = process.env.DB_DRIVER ?? 'sqlite';
-    const valid = ['sqlite', 'postgres'] as const;
-    if (!(valid as readonly string[]).includes(raw)) {
+    if (!VALID_DB_DRIVERS.includes(raw as 'sqlite' | 'postgres')) {
       throw new Error(
-        `DB_DRIVER="${raw}" is invalid. Must be one of: ${valid.join(', ')}. ` +
+        `DB_DRIVER="${raw}" is invalid. Must be one of: ${VALID_DB_DRIVERS.join(', ')}. ` +
         `Check for typos — an unrecognised value does NOT fall back to SQLite; the server will not start.`
       );
     }

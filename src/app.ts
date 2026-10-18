@@ -18,8 +18,7 @@ import { stellarHealth, stellarBreaker } from './services/stellar';
 import { checkHealth } from './services/ipfs';
 import { API_PREFIX, API_V1_PREFIX, API_V2_PREFIX } from './config';
 import { mountGraphQL } from './graphql';
-import { createPersistedOperationsPlugin } from './graphql/persisted-operations';
-import { loadPersistedOperationsFromFile } from './graphql/persisted-operations';
+
 import { ErrorCode } from './utils/errorCodes';
 import { metricsMiddleware, createMetricsHandler } from './middleware/metrics';
 import { ipReputationMiddleware } from './middleware/ipReputation';

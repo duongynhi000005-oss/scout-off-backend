@@ -12,7 +12,6 @@ import { decryptField, encryptField } from '../utils/fieldCipher';
 import { DbDriver } from './driver';
 import { SqliteDriver } from './sqlite-driver';
 import { PostgresDriver } from './postgres-driver';
-import { observeDbQueryDuration } from '../middleware/metrics';
 import {
   createBetterSqlite3LoadError,
   isBetterSqlite3LoadFailure,
@@ -26,7 +25,7 @@ const dbTracer = trace.getTracer('scout-off-backend');
  * records exception and ERROR status on throw. Zero-cost when OTEL is not
  * configured (noop tracer).
  */
-function withDbSpan<T>(name: string, sql: string, fn: () => T): T {
+function _withDbSpan<T>(name: string, sql: string, fn: () => T): T {
   const span = dbTracer.startSpan(`db.${name}`, {
     attributes: { 'db.system': 'sqlite', 'db.statement': sql.slice(0, 200) },
   });
@@ -1278,7 +1277,7 @@ function processCursorResults(
   rows: (PlayerRow | ScoredPlayerRow)[],
   limit: number,
   sortBy: string,
-  sortOrder: string,
+  _sortOrder: string,
 ): SearchPlayersResult {
   const hasMore = rows.length > limit;
   const data = hasMore ? rows.slice(0, limit) : rows;

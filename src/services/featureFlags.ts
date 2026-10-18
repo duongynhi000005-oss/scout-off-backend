@@ -1,6 +1,5 @@
 import { getFeatureFlag, getAllFeatureFlags, upsertFeatureFlag, getDb } from '../db';
 import { logAuditEvent } from './audit';
-import { logger } from '../utils/logger';
 
 /** Named feature flags. Add new constants here as features are gated. */
 export const FeatureFlags = {

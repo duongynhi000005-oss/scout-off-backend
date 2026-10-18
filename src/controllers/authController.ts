@@ -65,7 +65,7 @@ function issueRefreshToken(account: string, role: string): { token: string; jti:
 // ─── GET /auth/challenge ───────────────────────────────────────────────────────
 
 /** GET /auth/challenge?account=G... */
-export function getChallenge(req: Request, res: Response, next: NextFunction): void {
+export function getChallenge(req: Request, res: Response, _next: NextFunction): void {
   const parsed = challengeSchema.safeParse(req.query);
   if (!parsed.success) {
     logger.warn('[auth] failed_challenge_request', {
@@ -84,7 +84,7 @@ export function getChallenge(req: Request, res: Response, next: NextFunction): v
 // ─── POST /auth/token ──────────────────────────────────────────────────────────
 
 /** POST /auth/token  { transaction: "<signed XDR>", role?: "validator" } */
-export function postToken(req: Request, res: Response, next: NextFunction): void {
+export function postToken(req: Request, res: Response, _next: NextFunction): void {
 try {
     const parsed = tokenSchema.safeParse(req.body);
     if (!parsed.success) {

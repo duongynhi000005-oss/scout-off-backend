@@ -1,7 +1,7 @@
 import { ProgressLevel } from '../types';
 
 const VALID_TIERS: ProgressLevel[] = [0, 1, 2, 3];
-const TIER_NAMES: Record<ProgressLevel, string> = {
+const _TIER_NAMES: Record<ProgressLevel, string> = {
   0: 'Unverified',
   1: 'Verified',
   2: 'Performance',

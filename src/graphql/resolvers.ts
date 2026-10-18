@@ -36,7 +36,7 @@ function assertAuthenticated(ctx: GraphQLContext): void {
   }
 }
 
-function assertRole(ctx: GraphQLContext, role: string): void {
+function _assertRole(ctx: GraphQLContext, role: string): void {
   assertAuthenticated(ctx);
   if (ctx.role !== role) {
     throw new GraphQLError(`Requires ${role} role`, {

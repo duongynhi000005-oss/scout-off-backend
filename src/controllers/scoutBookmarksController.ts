@@ -11,7 +11,6 @@ import {
   getPlayerById,
   insertBookmark,
   deleteBookmark,
-  getBookmarksByScout,
   getBookmarkedPlayersWithDetails,
   insertBookmarkFolder,
   getBookmarkFoldersByScout,
@@ -19,7 +18,6 @@ import {
   deleteBookmarkFolder,
   moveBookmarksToRoot,
   countBookmarksInFolder,
-  ScoutBookmarkRow,
   ScoutBookmarkFolderRow,
   PlayerRow,
 } from '../db';
@@ -73,7 +71,7 @@ function serializePlayer(row: PlayerRow): Record<string, unknown> {
 export async function addBookmark(
   req: Request,
   res: Response,
-  next: NextFunction,
+  _next: NextFunction,
 ): Promise<void> {
   const { playerId, folderId, note } = req.body;
 
@@ -131,7 +129,7 @@ export async function addBookmark(
 export async function removeBookmark(
   req: Request,
   res: Response,
-  next: NextFunction,
+  _next: NextFunction,
 ): Promise<void> {
   const {playerId} = req.params as {playerId: string};
   const removed = await deleteBookmark(req.params.wallet as string, playerId);
@@ -160,7 +158,7 @@ export async function removeBookmark(
 export async function listBookmarks(
   req: Request,
   res: Response,
-  next: NextFunction,
+  _next: NextFunction,
 ): Promise<void> {
   const folderId = req.query.folderId ? parseInt(req.query.folderId as string, 10) : undefined;
 
@@ -188,7 +186,7 @@ export async function listBookmarks(
 export async function createBookmarkFolder(
   req: Request,
   res: Response,
-  next: NextFunction,
+  _next: NextFunction,
 ): Promise<void> {
   const { name } = req.body;
 
@@ -225,7 +223,7 @@ export async function createBookmarkFolder(
 export async function listBookmarkFolders(
   req: Request,
   res: Response,
-  next: NextFunction,
+  _next: NextFunction,
 ): Promise<void> {
   const folders: ScoutBookmarkFolderRow[] = await getBookmarkFoldersByScout(req.params.wallet as string);
 
@@ -249,7 +247,7 @@ export async function listBookmarkFolders(
 export async function deleteBookmarkFolderHandler(
   req: Request,
   res: Response,
-  next: NextFunction,
+  _next: NextFunction,
 ): Promise<void> {
   const {folderId} = req.params as {folderId: string};
   const folderIdNum = parseInt(folderId, 10);

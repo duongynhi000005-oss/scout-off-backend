@@ -149,7 +149,7 @@ async function resolveOwnedPendingOffer(
  * - 404: offer not found
  * - 409: offer already responded to
  */
-export async function acceptTrialOffer(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function acceptTrialOffer(req: Request, res: Response, _next: NextFunction): Promise<void> {
   const {playerId, offerId} = req.params as {playerId: string, offerId: string};
 
   const offer = await resolveOwnedPendingOffer(playerId, offerId, req, res, 'accept');
@@ -195,7 +195,7 @@ export async function acceptTrialOffer(req: Request, res: Response, next: NextFu
  * - 404: offer not found
  * - 409: offer already responded to
  */
-export async function rejectTrialOffer(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function rejectTrialOffer(req: Request, res: Response, _next: NextFunction): Promise<void> {
   const {playerId, offerId} = req.params as {playerId: string, offerId: string};
 
   // Reject-specific: parse the optional reason before any lookup or seeding,
@@ -257,7 +257,7 @@ export async function rejectTrialOffer(req: Request, res: Response, next: NextFu
  * - 404: offer not found
  * - 409: offer already responded to (accepted/rejected) or already cancelled
  */
-export async function cancelTrialOfferHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function cancelTrialOfferHandler(req: Request, res: Response, _next: NextFunction): Promise<void> {
   const { offerId } = req.params as { offerId: string };
   const scoutWallet = req.params.wallet as string;
 

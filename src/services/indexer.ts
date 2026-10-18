@@ -13,7 +13,6 @@ import {
   insertOrUpdatePlayer,
   updatePlayerProgress,
   insertPendingMilestone,
-  queryEvents,
   getEventsCount,
   rollbackEventsFromLedger,
 } from '../db';
@@ -27,7 +26,7 @@ import {
   type NormalizedIndexerEvent,
 } from './eventOrdering';
 import { withRestoredCorrelation } from './txCorrelation';
-import { EventBroadcaster, broadcaster } from './eventBroadcaster';
+import { broadcaster } from './eventBroadcaster';
 
 const tracer = trace.getTracer('scout-off-backend');
 
@@ -37,7 +36,7 @@ function getCache() {
 }
 
 // Track approved milestones for webhook dispatch
-const approvedMilestones: Array<{ type: string; payload: unknown }> = [];
+
 
 /** Current indexer lag in ledgers (latestChainLedger - lastIndexedLedger). Reset after each poll. */
 export let indexerLedgerLag = 0;

@@ -38,8 +38,8 @@ import { getFeatureFlags, updateFeatureFlag, toggleFeatureFlag, updateFeatureFla
 import { exportEvents } from '../controllers/exportController';
 import { listDeadLetters, replayDeadLetter, purgeOldDeadLetters, requeueDeadLetter, purgeDeadLetter } from '../controllers/webhookAdminController';
 import { setIpReputationController, getIpReputationController, setIpReputationSchema } from '../controllers/ipReputationController';
-import { triggerReindex, reindexStatusHandler, reindexBodySchema, reindexBodyShapeSchema, cancelReindexHandler } from '../controllers/reindexController';
-import { triggerReplay, replayStatusHandler, replayBodySchema, replayBodyShapeSchema } from '../controllers/replayController';
+import { triggerReindex, reindexStatusHandler, reindexBodyShapeSchema, cancelReindexHandler } from '../controllers/reindexController';
+import { triggerReplay, replayStatusHandler, replayBodyShapeSchema } from '../controllers/replayController';
 import { requireRole } from '../middleware/auth';
 import { idempotency } from '../middleware/idempotency';
 import { ipAllowlistMiddleware } from '../middleware/ipAllowlist';

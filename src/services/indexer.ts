@@ -198,14 +198,6 @@ export function normalizeEventId(
   return `${contractId}:${ledger}:${txHash}:${eventIndex}`;
 }
 
-// Stub hook — replace with real logic as needed (e.g. metrics, alerting).
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function onBeforeInsert(_eventId: string): void { /* hook */ }
-
-// Stub hook — called after a successful insert (INSERT OR IGNORE may be a no-op).
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function onAfterInsert(_eventId: string): void { /* hook */ }
-
 // ─── Indexer ──────────────────────────────────────────────────────────────────
 
 export async function indexEvents(): Promise<void> {
@@ -324,16 +316,9 @@ export async function indexEvents(): Promise<void> {
       const existingPlayer = await getPlayerByOnChainId(onChainPlayerId);
       if (existingPlayer) payload.player_id = existingPlayer.player_id;
     }
-    const eventId = normalizeEventId(
-      event.contractId,
-      event.ledger,
-      event.txHash,
-      event.eventIndex,
-    );
     const createdAt = raw.ledgerClosedAt ? new Date(raw.ledgerClosedAt).getTime() : Date.now();
     const ledgerHash = raw.ledgerHash ?? raw.pagingToken ?? raw.txHash;
 
-    onBeforeInsert(eventId);
     const insertResult = insert.run(
       type,
       event.ledger,
@@ -347,7 +332,6 @@ export async function indexEvents(): Promise<void> {
     );
     const eventInserted = insertResult.changes > 0;
     if (!eventInserted) return;
-    onAfterInsert(eventId);
 
     await withRestoredCorrelation(
       event.txHash,

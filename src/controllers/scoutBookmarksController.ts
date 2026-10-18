@@ -12,6 +12,7 @@ import {
   insertBookmark,
   deleteBookmark,
   getBookmarksByScout,
+  countBookmarksByScout,
   getBookmarkedPlayersWithDetails,
   insertBookmarkFolder,
   getBookmarkFoldersByScout,
@@ -25,6 +26,8 @@ import {
 } from '../db';
 import { getTierMeta } from '../utils/tier';
 import { logger } from '../utils/logger';
+import { MAX_PAGE_SIZE, DEFAULT_PAGE_SIZE } from '../utils/pagination';
+import { paginated } from '../utils/response';
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
@@ -149,8 +152,8 @@ export async function removeBookmark(
 /**
  * GET /api/scouts/:wallet/bookmarks
  *
- * List all bookmarked players for the authenticated scout.
- * Supports ?folderId= query parameter to filter by folder.
+ * List bookmarked players for the authenticated scout (paginated).
+ * Supports ?folderId=, ?page=, and ?pageSize= query parameters.
  * Returns full player profile summaries (same shape as the player list endpoint).
  *
  * Uses a single JOIN query (getBookmarkedPlayersWithDetails) instead of
@@ -162,10 +165,22 @@ export async function listBookmarks(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
+  const wallet = req.params.wallet as string;
   const folderId = req.query.folderId ? parseInt(req.query.folderId as string, 10) : undefined;
+  const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+  const pageSize = Math.min(
+    MAX_PAGE_SIZE,
+    Math.max(1, parseInt(req.query.pageSize as string, 10) || DEFAULT_PAGE_SIZE),
+  );
+  const offset = (page - 1) * pageSize;
 
   // Single JOIN query — replaces the previous per-bookmark getPlayerById() loop.
-  const rows = await getBookmarkedPlayersWithDetails(req.params.wallet as string, folderId);
+  const [rows, rawTotal] = await Promise.all([
+    getBookmarkedPlayersWithDetails(wallet, folderId, pageSize, offset),
+    typeof countBookmarksByScout === 'function'
+      ? countBookmarksByScout(wallet, folderId)
+      : Promise.resolve(undefined),
+  ]);
 
   const enriched = rows.map((row) => ({
     ...serializePlayer(row),
@@ -174,7 +189,12 @@ export async function listBookmarks(
     note: row.bookmark_note,
   }));
 
-  res.json({ success: true, data: enriched });
+  const total = typeof rawTotal === 'number' ? rawTotal : enriched.length;
+
+  res.json({
+    ...paginated(enriched, total, page, pageSize),
+    meta: { page, pageSize, total },
+  });
 }
 
 // ─── Bookmark folder handlers ─────────────────────────────────────────────────────

@@ -2846,11 +2846,11 @@ paths:
     get:
       tags:
         - scouts
-      summary: List all bookmarked players with full profile summaries.
+      summary: List all bookmarked players with full profile summaries (paginated).
       operationId: listBookmarks
       description: |-
-        List all bookmarked players with full profile summaries.
-        Supports ?folderId= query parameter to filter by folder.
+        List all bookmarked players with full profile summaries (paginated).
+        Supports ?folderId=, ?page=, and ?pageSize= query parameters.
       parameters:
         - name: wallet
           in: path
@@ -2864,9 +2864,23 @@ paths:
           schema:
             type: integer
           description: Optional — restrict to one folder
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Default 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Default 20, max 100
       responses:
         '200':
-          description: '{ success: true, data: Array<PlayerSummary & { bookmarked_at, folder_id, note }> }'
+          description: >-
+            { success: true, data: Array<PlayerSummary & { bookmarked_at, folder_id, note }>, total,
+            page, pageSize, meta: { page, pageSize, total } }
       security:
         - bearerAuth: []
         - apiKeyAuth:

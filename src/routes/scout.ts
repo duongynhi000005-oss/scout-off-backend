@@ -538,12 +538,14 @@ router.route('/:wallet/api-keys/:id/rotate')
  * @auth Bearer (scout role required; wallet must match authenticated account)
  *
  * GET /api/scouts/:wallet/bookmarks
- * List all bookmarked players with full profile summaries.
- * Supports ?folderId= query parameter to filter by folder.
+ * List all bookmarked players with full profile summaries (paginated).
+ * Supports ?folderId=, ?page=, and ?pageSize= query parameters.
  *
  * @param wallet {string} - Scout's Stellar public key
  * @query folderId {integer} - Optional — restrict to one folder
- * @response 200 { success: true, data: Array<PlayerSummary & { bookmarked_at, folder_id, note }> }
+ * @query page {integer} - Default 1
+ * @query pageSize {integer} - Default 20, max 100
+ * @response 200 { success: true, data: Array<PlayerSummary & { bookmarked_at, folder_id, note }>, total, page, pageSize, meta: { page, pageSize, total } }
  * @auth Bearer (scout role required; wallet must match authenticated account)
  */
 router.route('/:wallet/bookmarks')

@@ -2619,19 +2619,40 @@ export async function deleteBookmark(scoutWallet: string, playerId: string): Pro
 
 /**
  * List all bookmarks for a scout, ordered by creation time (newest first).
- * Optionally filter by folder_id.
+ * Optionally filter by folder_id and paginate with limit/offset.
  */
-export async function getBookmarksByScout(scoutWallet: string, folderId?: number | null): Promise<ScoutBookmarkRow[]> {
+export async function getBookmarksByScout(
+  scoutWallet: string,
+  folderId?: number | null,
+  limit?: number,
+  offset = 0,
+): Promise<ScoutBookmarkRow[]> {
   let sql: string;
   let params: (string | number | null)[];
 
-  if (folderId !== undefined) {
+  if (folderId !== undefined && limit !== undefined) {
+    sql = `
+      SELECT * FROM scout_bookmarks
+      WHERE scout_wallet = ? AND folder_id = ?
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    params = [scoutWallet, folderId, limit, offset];
+  } else if (folderId !== undefined) {
     sql = `
       SELECT * FROM scout_bookmarks
       WHERE scout_wallet = ? AND folder_id = ?
       ORDER BY created_at DESC
     `;
     params = [scoutWallet, folderId];
+  } else if (limit !== undefined) {
+    sql = `
+      SELECT * FROM scout_bookmarks
+      WHERE scout_wallet = ?
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    params = [scoutWallet, limit, offset];
   } else {
     sql = `
       SELECT * FROM scout_bookmarks
@@ -2642,6 +2663,40 @@ export async function getBookmarksByScout(scoutWallet: string, folderId?: number
   }
 
   return timedQueryAsync(sql, () => getDriver().all<ScoutBookmarkRow>(sql, params));
+}
+
+/**
+ * Count bookmarked players for a scout, optionally filtered by folder_id.
+ */
+export async function countBookmarksByScout(
+  scoutWallet: string,
+  folderId?: number | null,
+): Promise<number> {
+  let sql: string;
+  let params: (string | number | null)[];
+
+  if (folderId !== undefined) {
+    sql = `
+      SELECT COUNT(*) as count
+      FROM scout_bookmarks b
+      INNER JOIN players p ON p.player_id = b.player_id
+      WHERE b.scout_wallet = ? AND b.folder_id = ?
+    `;
+    params = [scoutWallet, folderId];
+  } else {
+    sql = `
+      SELECT COUNT(*) as count
+      FROM scout_bookmarks b
+      INNER JOIN players p ON p.player_id = b.player_id
+      WHERE b.scout_wallet = ?
+    `;
+    params = [scoutWallet];
+  }
+
+  return timedQueryAsync(sql, async () => {
+    const row = await getDriver().get<{ count: number | string }>(sql, params);
+    return Number(row?.count ?? 0);
+  });
 }
 
 /**
@@ -2740,15 +2795,33 @@ export interface BookmarkedPlayerRow extends PlayerRow {
  * @param scoutWallet  The scout's Stellar wallet address.
  * @param folderId     Optional folder filter. When provided, only bookmarks in
  *                     that folder are returned.
+ * @param limit        Optional pagination limit.
+ * @param offset       Optional pagination offset (default 0).
  */
 export async function getBookmarkedPlayersWithDetails(
   scoutWallet: string,
   folderId?: number | null,
+  limit?: number,
+  offset = 0,
 ): Promise<BookmarkedPlayerRow[]> {
   let sql: string;
   let params: (string | number | null)[];
 
-  if (folderId !== undefined) {
+  if (folderId !== undefined && limit !== undefined) {
+    sql = `
+      SELECT
+        p.*,
+        b.created_at AS bookmarked_at,
+        b.folder_id  AS bookmark_folder_id,
+        b.note       AS bookmark_note
+      FROM scout_bookmarks b
+      INNER JOIN players p ON p.player_id = b.player_id
+      WHERE b.scout_wallet = ? AND b.folder_id = ?
+      ORDER BY b.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    params = [scoutWallet, folderId, limit, offset];
+  } else if (folderId !== undefined) {
     sql = `
       SELECT
         p.*,
@@ -2761,6 +2834,20 @@ export async function getBookmarkedPlayersWithDetails(
       ORDER BY b.created_at DESC
     `;
     params = [scoutWallet, folderId];
+  } else if (limit !== undefined) {
+    sql = `
+      SELECT
+        p.*,
+        b.created_at AS bookmarked_at,
+        b.folder_id  AS bookmark_folder_id,
+        b.note       AS bookmark_note
+      FROM scout_bookmarks b
+      INNER JOIN players p ON p.player_id = b.player_id
+      WHERE b.scout_wallet = ?
+      ORDER BY b.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    params = [scoutWallet, limit, offset];
   } else {
     sql = `
       SELECT

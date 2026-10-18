@@ -857,6 +857,7 @@ curl "http://localhost:4000/api/v1/players?pageSize=500"
 
 **REST endpoints:**
 - `GET /api/players` (filter/search)
+- `GET /api/scouts/:wallet/bookmarks`
 - `GET /api/scouts/:wallet/saved-searches/:id/run`
 
 **GraphQL queries:**

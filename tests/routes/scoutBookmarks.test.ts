@@ -43,6 +43,7 @@ jest.mock('../../src/db', () => ({
   insertBookmark: jest.fn(),
   deleteBookmark: jest.fn(),
   getBookmarksByScout: jest.fn(),
+  countBookmarksByScout: jest.fn(),
   getBookmarkedPlayersWithDetails: jest.fn(),
   insertBookmarkFolder: jest.fn(),
   getBookmarkFoldersByScout: jest.fn(),
@@ -76,6 +77,7 @@ import {
   insertBookmark,
   deleteBookmark,
   getBookmarksByScout,
+  countBookmarksByScout,
   getBookmarkedPlayersWithDetails,
   insertBookmarkFolder,
   getBookmarkFoldersByScout,
@@ -89,6 +91,7 @@ const mockGetPlayerById        = getPlayerById        as jest.Mock;
 const mockInsertBookmark       = insertBookmark       as jest.Mock;
 const mockDeleteBookmark       = deleteBookmark       as jest.Mock;
 const mockGetBookmarks         = getBookmarksByScout   as jest.Mock;
+const mockCountBookmarks       = countBookmarksByScout as jest.Mock;
 const mockGetBookmarkedPlayers = getBookmarkedPlayersWithDetails as jest.Mock;
 const mockInsertBookmarkFolder = insertBookmarkFolder as jest.Mock;
 const mockGetBookmarkFolders   = getBookmarkFoldersByScout as jest.Mock;
@@ -384,7 +387,72 @@ describe('GET /api/scouts/:wallet/bookmarks', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data).toHaveLength(1);
-    expect(mockGetBookmarkedPlayers).toHaveBeenCalledWith(SCOUT_A, 1);
+    expect(mockGetBookmarkedPlayers).toHaveBeenCalledWith(SCOUT_A, 1, 20, 0);
+  });
+
+  it('uses default page=1 and pageSize=20 and returns pagination metadata', async () => {
+    mockGetBookmarkedPlayers.mockReturnValueOnce([]);
+    mockCountBookmarks.mockReturnValueOnce(45);
+
+    const res = await request(app)
+      .get(`/api/scouts/${SCOUT_A}/bookmarks`)
+      .set('Authorization', `Bearer ${scoutAToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.page).toBe(1);
+    expect(res.body.pageSize).toBe(20);
+    expect(res.body.total).toBe(45);
+    expect(res.body.meta).toEqual({ page: 1, pageSize: 20, total: 45 });
+    expect(mockGetBookmarkedPlayers).toHaveBeenCalledWith(SCOUT_A, undefined, 20, 0);
+    expect(mockCountBookmarks).toHaveBeenCalledWith(SCOUT_A, undefined);
+  });
+
+  it('clamps pageSize to MAX_PAGE_SIZE (100)', async () => {
+    mockGetBookmarkedPlayers.mockReturnValueOnce([]);
+    mockCountBookmarks.mockReturnValueOnce(250);
+
+    const res = await request(app)
+      .get(`/api/scouts/${SCOUT_A}/bookmarks?page=2&pageSize=500`)
+      .set('Authorization', `Bearer ${scoutAToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.page).toBe(2);
+    expect(res.body.pageSize).toBe(100);
+    expect(res.body.total).toBe(250);
+    expect(res.body.meta).toEqual({ page: 2, pageSize: 100, total: 250 });
+    expect(mockGetBookmarkedPlayers).toHaveBeenCalledWith(SCOUT_A, undefined, 100, 100);
+  });
+
+  it('combines folderId filter with page and pageSize pagination', async () => {
+    mockGetBookmarkedPlayers.mockReturnValueOnce([
+      {
+        player_id: PLAYER_ID,
+        wallet: MOCK_PLAYER.wallet,
+        position: MOCK_PLAYER.position,
+        region: MOCK_PLAYER.region,
+        metadata_uri: MOCK_PLAYER.metadata_uri,
+        progress_level: MOCK_PLAYER.progress_level,
+        created_at: MOCK_PLAYER.created_at,
+        registered_at: MOCK_PLAYER.created_at,
+        is_active: 1,
+        bookmarked_at: 1_700_000_010,
+        bookmark_folder_id: 3,
+        bookmark_note: 'Folder 3 note',
+      },
+    ]);
+    mockCountBookmarks.mockReturnValueOnce(15);
+
+    const res = await request(app)
+      .get(`/api/scouts/${SCOUT_A}/bookmarks?folderId=3&page=2&pageSize=10`)
+      .set('Authorization', `Bearer ${scoutAToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.meta).toEqual({ page: 2, pageSize: 10, total: 15 });
+    expect(mockGetBookmarkedPlayers).toHaveBeenCalledWith(SCOUT_A, 3, 10, 10);
+    expect(mockCountBookmarks).toHaveBeenCalledWith(SCOUT_A, 3);
   });
 
   it('returns empty array when scout has no bookmarks', async () => {

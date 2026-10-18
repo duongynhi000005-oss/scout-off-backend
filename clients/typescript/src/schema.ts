@@ -1634,9 +1634,9 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List all bookmarked players with full profile summaries.
-         * @description List all bookmarked players with full profile summaries.
-         *     Supports ?folderId= query parameter to filter by folder.
+         * List all bookmarked players with full profile summaries (paginated).
+         * @description List all bookmarked players with full profile summaries (paginated).
+         *     Supports ?folderId=, ?page=, and ?pageSize= query parameters.
          */
         get: operations["listBookmarks"];
         put?: never;
@@ -5216,6 +5216,10 @@ export interface operations {
             query?: {
                 /** @description Optional — restrict to one folder */
                 folderId?: number;
+                /** @description Default 1 */
+                page?: number;
+                /** @description Default 20, max 100 */
+                pageSize?: number;
             };
             header?: never;
             path: {
@@ -5226,7 +5230,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description { success: true, data: Array<PlayerSummary & { bookmarked_at, folder_id, note }> } */
+            /** @description { success: true, data: Array<PlayerSummary & { bookmarked_at, folder_id, note }>, total, page, pageSize, meta: { page, pageSize, total } } */
             200: {
                 headers: {
                     [name: string]: unknown;

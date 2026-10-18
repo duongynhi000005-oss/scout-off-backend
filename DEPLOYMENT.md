@@ -485,6 +485,7 @@ write from staging could silently be served to production requests (or vice vers
 | `CACHE_NAMESPACE` | `NODE_ENV` value | Prefix prepended to every cache key. |
 | `REDIS_URL` | _(unset — in-memory)_ | Redis connection URL. When unset, an in-memory store is used and namespacing is a no-op. |
 | `PLAYER_CACHE_TTL_MS` | `60000` | TTL for player list cache entries (ms). |
+| `CACHE_MAX_ENTRIES` | `1000` | Maximum number of entries in the bounded LRU in-memory `CacheStore` (`CACHE_MAX_SIZE` and `PLAYER_CACHE_MAX_SIZE` are supported as deprecated aliases). |
 
 **Default behavior:** `CACHE_NAMESPACE` defaults to `NODE_ENV`, so `development`, `test`,
 `staging`, and `production` environments are always distinct out-of-the-box without any

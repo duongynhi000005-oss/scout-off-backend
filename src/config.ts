@@ -301,6 +301,44 @@ if (nodeEnv === 'production' && network !== 'mainnet') {
   );
 }
 
+export function parseCacheMaxEntries(env: NodeJS.ProcessEnv = process.env): number {
+  const primary = env.CACHE_MAX_ENTRIES?.trim();
+  const aliasCacheMaxSize = env.CACHE_MAX_SIZE?.trim();
+  const aliasPlayerCacheMaxSize = env.PLAYER_CACHE_MAX_SIZE?.trim();
+
+  if (primary) {
+    if (aliasCacheMaxSize) {
+      console.warn(
+        '[config] CACHE_MAX_SIZE is deprecated and ignored because CACHE_MAX_ENTRIES is set.',
+      );
+    }
+    if (aliasPlayerCacheMaxSize) {
+      console.warn(
+        '[config] PLAYER_CACHE_MAX_SIZE is deprecated and ignored because CACHE_MAX_ENTRIES is set.',
+      );
+    }
+    return parseNumericEnv('CACHE_MAX_ENTRIES', primary, 1000, { min: 1, integer: true });
+  }
+
+  if (aliasCacheMaxSize) {
+    console.warn(
+      '[config] CACHE_MAX_SIZE is deprecated; use CACHE_MAX_ENTRIES instead.',
+    );
+    return parseNumericEnv('CACHE_MAX_SIZE', aliasCacheMaxSize, 1000, { min: 1, integer: true });
+  }
+
+  if (aliasPlayerCacheMaxSize) {
+    console.warn(
+      '[config] PLAYER_CACHE_MAX_SIZE is deprecated; use CACHE_MAX_ENTRIES instead.',
+    );
+    return parseNumericEnv('PLAYER_CACHE_MAX_SIZE', aliasPlayerCacheMaxSize, 1000, { min: 1, integer: true });
+  }
+
+  return parseNumericEnv('CACHE_MAX_ENTRIES', undefined, 1000, { min: 1, integer: true });
+}
+
+const resolvedCacheMaxEntries = parseCacheMaxEntries(process.env);
+
 const config = {
   nodeEnv,
   port: parseNumericEnv('PORT', process.env.PORT, 4000, { min: 0, max: 65535, integer: true }),
@@ -741,11 +779,13 @@ const config = {
   /** TTL for feature flag cache entries (ms). */
   featureFlagCacheTtlMs: parseNumericEnv('FEATURE_FLAG_CACHE_TTL_MS', process.env.FEATURE_FLAG_CACHE_TTL_MS, 5000, { min: 1, integer: true }),
 
-  // ── In-memory cache limits ────────────────────────────────────────────
-  /** Max entries in generic cache stores (LRU eviction). */
-  cacheMaxSize: parseNumericEnv('CACHE_MAX_SIZE', process.env.CACHE_MAX_SIZE, 1000, { min: 1, integer: true }),
-  cacheMaxEntries: parseNumericEnv('CACHE_MAX_ENTRIES', process.env.CACHE_MAX_ENTRIES, 1000, { min: 1, integer: true }),
-  playerCacheMaxSize: parseNumericEnv('PLAYER_CACHE_MAX_SIZE', process.env.PLAYER_CACHE_MAX_SIZE, 1000, { min: 1, integer: true }),
+  // ── In-memory cache limits (#1553) ────────────────────────────────────
+  /** Max entries in the bounded LRU in-memory cache store (`CACHE_MAX_ENTRIES`). */
+  cacheMaxEntries: resolvedCacheMaxEntries,
+  /** @deprecated Use `cacheMaxEntries` (`CACHE_MAX_ENTRIES`). */
+  cacheMaxSize: resolvedCacheMaxEntries,
+  /** @deprecated Use `cacheMaxEntries` (`CACHE_MAX_ENTRIES`). */
+  playerCacheMaxSize: resolvedCacheMaxEntries,
 
   // ── GraphQL DataLoader concurrency ────────────────────────────────────
   /** Max in-flight RPC calls for the milestone GraphQL DataLoader. */

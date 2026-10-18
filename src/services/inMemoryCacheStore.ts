@@ -1,4 +1,5 @@
 import { CacheStore } from './cacheStore';
+import config, { parseCacheMaxEntries } from '../config';
 import { recordCacheEviction } from '../middleware/metrics';
 
 interface Entry {
@@ -6,20 +7,43 @@ interface Entry {
   expiresAt?: number;
 }
 
-const DEFAULT_MAX_SIZE = 1000;
+export const DEFAULT_MAX_SIZE = 1000;
 
 function resolveMaxSize(explicit?: number): number {
-  if (explicit !== undefined && explicit > 0) return explicit;
-  const fromEnv = Number(process.env.CACHE_MAX_ENTRIES);
-  return fromEnv > 0 ? fromEnv : DEFAULT_MAX_SIZE;
+  if (explicit !== undefined) {
+    if (!Number.isInteger(explicit) || explicit < 1) {
+      throw new Error(`InMemoryCacheStore maxSize must be a positive integer (got ${explicit})`);
+    }
+    return explicit;
+  }
+  if (
+    process.env.CACHE_MAX_ENTRIES !== undefined ||
+    process.env.CACHE_MAX_SIZE !== undefined ||
+    process.env.PLAYER_CACHE_MAX_SIZE !== undefined
+  ) {
+    return parseCacheMaxEntries(process.env);
+  }
+  return config?.cacheMaxEntries ?? DEFAULT_MAX_SIZE;
 }
 
+/**
+ * Unified bounded, TTL-aware, LRU in-memory CacheStore (#1553).
+ *
+ * Uses Map insertion order to track LRU access order in O(1): reading (`get`,
+ * `has`) or updating (`set`) an entry re-inserts it at the tail of the Map, and
+ * when capacity (`maxSize`, configured via `CACHE_MAX_ENTRIES`) is exceeded the
+ * head entry is evicted and counted via `recordCacheEviction()`.
+ */
 export class InMemoryCacheStore implements CacheStore {
-  private store = new Map<string, Entry>();
-  private readonly maxSize: number;
+  private readonly store = new Map<string, Entry>();
+  public readonly maxSize: number;
 
   constructor(maxSize?: number) {
     this.maxSize = resolveMaxSize(maxSize);
+  }
+
+  get size(): number {
+    return this.store.size;
   }
 
   private isExpired(entry: Entry): boolean {
@@ -27,21 +51,17 @@ export class InMemoryCacheStore implements CacheStore {
   }
 
   private evictIfNeeded(): void {
-    if (this.store.size > this.maxSize) {
+    while (this.store.size > this.maxSize) {
       const oldestKey = this.store.keys().next().value;
-      if (oldestKey !== undefined) {
-        this.store.delete(oldestKey);
-        recordCacheEviction();
-      }
+      if (oldestKey === undefined) break;
+      this.store.delete(oldestKey);
+      recordCacheEviction();
     }
   }
 
-  private touch(key: string): void {
-    const entry = this.store.get(key);
-    if (entry) {
-      this.store.delete(key);
-      this.store.set(key, entry);
-    }
+  private touch(key: string, entry: Entry): void {
+    this.store.delete(key);
+    this.store.set(key, entry);
   }
 
   async get<T>(key: string): Promise<T | undefined> {
@@ -52,7 +72,7 @@ export class InMemoryCacheStore implements CacheStore {
       recordCacheEviction();
       return undefined;
     }
-    this.touch(key);
+    this.touch(key, entry);
     return entry.value as T;
   }
 
@@ -61,7 +81,9 @@ export class InMemoryCacheStore implements CacheStore {
       value,
       expiresAt: ttlMs !== undefined ? Date.now() + ttlMs : undefined,
     };
-    if (this.store.has(key)) this.store.delete(key);
+    if (this.store.has(key)) {
+      this.store.delete(key);
+    }
     this.store.set(key, entry);
     this.evictIfNeeded();
   }
@@ -75,15 +97,19 @@ export class InMemoryCacheStore implements CacheStore {
     if (!entry) return false;
     if (this.isExpired(entry)) {
       this.store.delete(key);
+      recordCacheEviction();
       return false;
     }
-    this.touch(key);
+    this.touch(key, entry);
     return true;
   }
 
   async deleteByPrefix(prefix: string): Promise<void> {
     for (const key of this.store.keys()) {
-      if (key.startsWith(prefix)) this.store.delete(key);
+      if (key.startsWith(prefix)) {
+        this.store.delete(key);
+      }
     }
   }
 }
+

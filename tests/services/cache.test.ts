@@ -531,3 +531,82 @@ describe('cache namespace isolation (#672)', () => {
     await expect(staging.cacheGet('players:list:all')).resolves.toEqual([4, 5, 6]);
   });
 });
+
+// ─── #1553: Unified InMemoryCacheStore LRU & CACHE_MAX_ENTRIES consolidation ──
+
+describe('Unified InMemoryCacheStore & CACHE_MAX_ENTRIES config (#1553)', () => {
+  it('evicts the least-recently-used key when maxSize is exceeded and increments cache_evictions_total', async () => {
+    jest.resetModules();
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const metrics = require('../../src/middleware/metrics');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { InMemoryCacheStore: FreshInMemoryCacheStore } = require('../../src/services/inMemoryCacheStore');
+    metrics.resetMetrics();
+
+    const store = new FreshInMemoryCacheStore(3);
+    await store.set('a', 1);
+    await store.set('b', 2);
+    await store.set('c', 3);
+
+    // Touch 'a' via get() and 'b' via has() so 'c' becomes the least-recently-used key.
+    await expect(store.get('a')).resolves.toBe(1);
+    await expect(store.has('b')).resolves.toBe(true);
+
+    // Inserting 'd' exceeds maxSize=3 and should evict 'c'.
+    await store.set('d', 4);
+
+    expect(store.size).toBe(3);
+    await expect(store.get('c')).resolves.toBeUndefined();
+    await expect(store.get('a')).resolves.toBe(1);
+    await expect(store.get('b')).resolves.toBe(2);
+    await expect(store.get('d')).resolves.toBe(4);
+    expect(metrics.getCacheMetrics().evictions).toBe(1);
+  });
+
+  it('re-exports the exact same InMemoryCacheStore class from cacheStore.ts and inMemoryCacheStore.ts', () => {
+    jest.resetModules();
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const fromCacheStore = require('../../src/services/cacheStore').InMemoryCacheStore;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const fromInMemory = require('../../src/services/inMemoryCacheStore').InMemoryCacheStore;
+    expect(fromCacheStore).toBe(fromInMemory);
+  });
+
+  it('parseCacheMaxEntries reads CACHE_MAX_ENTRIES and warns on deprecated aliases CACHE_MAX_SIZE and PLAYER_CACHE_MAX_SIZE', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { parseCacheMaxEntries } = require('../../src/config') as typeof import('../../src/config');
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      expect(parseCacheMaxEntries({})).toBe(1000);
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      expect(parseCacheMaxEntries({ CACHE_MAX_ENTRIES: '250' })).toBe(250);
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      expect(parseCacheMaxEntries({ CACHE_MAX_SIZE: '500' })).toBe(500);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('CACHE_MAX_SIZE is deprecated; use CACHE_MAX_ENTRIES instead.'),
+      );
+      warnSpy.mockClear();
+
+      expect(parseCacheMaxEntries({ PLAYER_CACHE_MAX_SIZE: '750' })).toBe(750);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('PLAYER_CACHE_MAX_SIZE is deprecated; use CACHE_MAX_ENTRIES instead.'),
+      );
+      warnSpy.mockClear();
+
+      expect(
+        parseCacheMaxEntries({
+          CACHE_MAX_ENTRIES: '300',
+          CACHE_MAX_SIZE: '500',
+          PLAYER_CACHE_MAX_SIZE: '750',
+        }),
+      ).toBe(300);
+      expect(warnSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+});
+

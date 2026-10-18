@@ -251,11 +251,16 @@ app.use(metricsMiddleware);
 // metricsMiddleware is registered first, keeping score increments in order.
 app.use(ipReputationMiddleware);
 
-app.get('/version', (_req, res) => {
+const noStore: express.RequestHandler = (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+};
+
+app.get('/version', noStore, (_req, res) => {
   res.json(getVersionInfo());
 });
 
-app.get('/health', async (_req, res) => {
+app.get('/health', noStore, async (_req, res) => {
   const healthStatus: Record<string, 'ok' | 'error' | 'disabled'> = {};
 
   if (config.stellarHealthCheckEnabled) {
@@ -369,7 +374,7 @@ async function checkReadiness(): Promise<Record<string, ProbeResult>> {
   return services;
 }
 
-app.get('/ready', async (_req, res) => {
+app.get('/ready', noStore, async (_req, res) => {
   if (isDraining()) {
     res.status(503).json({ status: 'draining' });
     return;
@@ -384,11 +389,11 @@ app.get('/ready', async (_req, res) => {
 });
 
 // Kubernetes-style liveness and readiness probes
-app.get('/health/liveness', createTimeout(5_000), (_req, res) => {
+app.get('/health/liveness', noStore, createTimeout(5_000), (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-app.get('/health/readiness', createTimeout(5_000), async (_req, res) => {
+app.get('/health/readiness', noStore, createTimeout(5_000), async (_req, res) => {
   if (isDraining()) {
     res.status(503).json({ status: 'draining' });
     return;
@@ -405,6 +410,7 @@ app.get('/health/readiness', createTimeout(5_000), async (_req, res) => {
 // Operator-facing dependency health endpoint reporting version and latency per downstream (admin-gated)
 app.get(
   ['/health/dependencies', `${API_PREFIX}/health/dependencies`, `${API_V1_PREFIX}/health/dependencies`, `${API_V2_PREFIX}/health/dependencies`],
+  noStore,
   createTimeout(10_000),
   requireRole('admin'),
   getHealthDependencies,
@@ -413,7 +419,7 @@ app.get(
 // Prometheus scrape endpoint. Intentionally unauthenticated and not rate-limited
 // (standard scrape pattern): it is registered before the auth routes and is not
 // wrapped by any auth or rate-limit middleware.
-app.get('/metrics', createMetricsHandler(() => indexerLedgerLag));
+app.get('/metrics', noStore, createMetricsHandler(() => indexerLedgerLag));
 
 app.use('/auth', authRoutes);
 

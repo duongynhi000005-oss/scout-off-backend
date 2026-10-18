@@ -617,6 +617,7 @@ export function createMetricsHandler(
   getStuckPinsCount: () => number = () => getStuckPendingPinsCount(),
 ) {
   return (_req: Request, res: Response): void => {
+    res.set('Cache-Control', 'no-store');
     res.set('Content-Type', PROMETHEUS_CONTENT_TYPE);
     res.send(serializeMetrics({
       indexerLedgerLag: getIndexerLedgerLag(),

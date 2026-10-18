@@ -36,6 +36,7 @@ describe('GET /metrics — Prometheus exposition', () => {
   it('returns 200 with the Prometheus text content-type and requires no auth', async () => {
     const res = await request(buildApp()).get('/metrics'); // no Authorization header
     expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
     expect(res.headers['content-type']).toContain('text/plain');
     expect(res.headers['content-type']).toContain('version=0.0.4');
     expect(PROMETHEUS_CONTENT_TYPE).toContain('version=0.0.4');

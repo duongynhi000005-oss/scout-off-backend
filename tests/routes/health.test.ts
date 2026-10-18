@@ -387,4 +387,12 @@ describe('GET /ready and GET /health/readiness return identical responses', () =
     expect(a.status).toBe(b.status);
     expect(normalizeTiming(a.body)).toEqual(normalizeTiming(b.body));
   });
+
+  it('sets Cache-Control: no-store on /health, /ready, /health/liveness, and /health/readiness (#1609)', async () => {
+    mockCheckHealth.mockResolvedValue(undefined);
+    for (const endpoint of ['/health', '/ready', '/health/liveness', '/health/readiness']) {
+      const res = await request(app).get(endpoint);
+      expect(res.headers['cache-control']).toBe('no-store');
+    }
+  });
 });

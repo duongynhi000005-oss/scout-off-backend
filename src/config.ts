@@ -765,9 +765,13 @@ const config = {
 
   // ── Indexer settings ──────────────────────────────────────────────────
   /** Finality margin: ledgers to hold back from tip to avoid reorgs. */
-  indexerFinalityMargin: parseNumericEnv('INDEXER_FINALITY_MARGIN', process.env.INDEXER_FINALITY_MARGIN, 10, { min: 1, integer: true }),
+  indexerFinalityMargin: parseNumericEnv('INDEXER_FINALITY_MARGIN', process.env.INDEXER_FINALITY_MARGIN, 10, { min: 0, max: 1000, integer: true }),
   /** Ledger lag threshold before warning logs are emitted. */
   indexerLagWarnThreshold: parseNumericEnv('INDEXER_LAG_WARN_THRESHOLD', process.env.INDEXER_LAG_WARN_THRESHOLD, 100, { min: 1, integer: true }),
+  indexer: {
+    lagWarnThreshold: parseNumericEnv('INDEXER_LAG_WARN_THRESHOLD', process.env.INDEXER_LAG_WARN_THRESHOLD, 100, { min: 1, integer: true }),
+    finalityMargin: parseNumericEnv('INDEXER_FINALITY_MARGIN', process.env.INDEXER_FINALITY_MARGIN, 10, { min: 0, max: 1000, integer: true }),
+  },
 
   // ── Proxy settings ────────────────────────────────────────────────────
   /** Number of trusted reverse-proxy hops in front of this server (for IP resolution). */

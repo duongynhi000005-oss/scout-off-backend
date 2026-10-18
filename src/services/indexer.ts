@@ -44,12 +44,12 @@ export let indexerLedgerLag = 0;
 
 /** Threshold in ledgers above which a warning is logged. Configurable via INDEXER_LAG_WARN_THRESHOLD. */
 function getLagWarnThreshold(): number {
-  return parseInt(process.env.INDEXER_LAG_WARN_THRESHOLD ?? '100', 10);
+  return config.indexer.lagWarnThreshold;
 }
 
 /** Configurable finality margin delays treating the most recent N ledgers as immutable. */
 function getFinalityMargin(): number {
-  return parseInt(process.env.INDEXER_FINALITY_MARGIN ?? '10', 10);
+  return config.indexer.finalityMargin;
 }
 
 // ─── Payload normalisation ────────────────────────────────────────────────────

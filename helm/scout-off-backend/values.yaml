@@ -284,6 +284,9 @@ env:
   ADMIN_ACTION_TTL_MS: "3600000"
   # Player cache TTL in ms. Default: 60000 (1 min).
   PLAYER_CACHE_TTL_MS: "60000"
+  # Indexer lag warning threshold and finality margin (ledgers)
+  INDEXER_LAG_WARN_THRESHOLD: "100"
+  INDEXER_FINALITY_MARGIN: "10"
 
 # -----------------------------------------------------------------------------
 # Pod annotations

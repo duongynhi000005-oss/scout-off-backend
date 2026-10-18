@@ -361,6 +361,8 @@ describe('parseNumericEnv validation', () => {
     'EVIDENCE_MAX_BYTES',
     'ADMIN_ACTION_TTL_MS',
     'COMPRESSION_THRESHOLD',
+    'INDEXER_LAG_WARN_THRESHOLD',
+    'INDEXER_FINALITY_MARGIN',
   ];
 
   beforeEach(() => {
@@ -648,5 +650,32 @@ describe('parseNumericEnv validation', () => {
     const cfg = await loadConfig();
     expect(cfg.compressionThresholdBytes).toBe(512);
     delete process.env.COMPRESSION_THRESHOLD_BYTES;
+  });
+
+  // ── INDEXER_LAG_WARN_THRESHOLD and INDEXER_FINALITY_MARGIN ───────────────────
+
+  it('populates config.indexer from env', async () => {
+    process.env.INDEXER_LAG_WARN_THRESHOLD = '250';
+    process.env.INDEXER_FINALITY_MARGIN = '20';
+    const cfg = await loadConfig();
+    expect(cfg.indexer).toEqual({
+      lagWarnThreshold: 250,
+      finalityMargin: 20,
+    });
+  });
+
+  it('INDEXER_LAG_WARN_THRESHOLD: 0 is below min (1) and throws', async () => {
+    process.env.INDEXER_LAG_WARN_THRESHOLD = '0';
+    await expectThrowsContaining('INDEXER_LAG_WARN_THRESHOLD');
+  });
+
+  it('INDEXER_FINALITY_MARGIN: -1 is below min (0) and throws', async () => {
+    process.env.INDEXER_FINALITY_MARGIN = '-1';
+    await expectThrowsContaining('INDEXER_FINALITY_MARGIN');
+  });
+
+  it('INDEXER_FINALITY_MARGIN: 1001 exceeds max (1000) and throws', async () => {
+    process.env.INDEXER_FINALITY_MARGIN = '1001';
+    await expectThrowsContaining('INDEXER_FINALITY_MARGIN');
   });
 });

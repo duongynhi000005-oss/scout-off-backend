@@ -599,6 +599,10 @@ curl -X POST "http://localhost:4000/api/admin/actions/cm123456789/approve" \
 
 When `ADMIN_THRESHOLD = 1`, operations execute immediately without creating pending actions. The response format and audit logging remain consistent.
 
+### Runtime Feature Flags
+
+Operators can list and toggle runtime feature flags (`saved_searches`, `graphql_enabled`, `player_tokens`, `player_tokens_enabled`, `saved_search_alerts_enabled`) via `GET /api/admin/feature-flags`, `PUT /api/admin/feature-flags`, and `PUT /api/admin/feature-flags/:name`. See [docs/feature-flags.md](docs/feature-flags.md) for flag defaults, caching behaviour (`FEATURE_FLAG_CACHE_TTL_MS`), audit logging (`feature_flag_toggled`), and known caveats.
+
 ---
 
 ## Server-Sent Events (`GET /api/events/stream`) (#1019)

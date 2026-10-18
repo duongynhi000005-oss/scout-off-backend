@@ -51,6 +51,7 @@ describe('Error Response Consistency — application/json invariant', () => {
       expect(res.type).toBe('application/json');
       expectValidErrorResponse(res.body);
       expect(res.body.code).toBe(ErrorCode.NOT_FOUND);
+      expect(res.body.correlationId).toBe(res.headers['x-correlation-id']);
     });
 
     it('returns application/json for POST /api/nonexistent', async () => {

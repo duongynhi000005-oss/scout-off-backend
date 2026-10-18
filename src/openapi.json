@@ -132,6 +132,14 @@
           },
           "code": {
             "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": "Requested path (present on 404 Not Found responses)"
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Request correlation ID matching X-Correlation-ID response header"
           }
         }
       },

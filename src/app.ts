@@ -9,6 +9,7 @@ import scoutRoutes from './routes/scout';
 import validatorRoutes from './routes/validator';
 import adminRoutes from './routes/admin';
 import { errorHandler } from './middleware/errorHandler';
+import { jsonBody } from './middleware/bodyParser';
 import { requestLogger } from './middleware/requestLogger';
 import { securityHeaders } from './middleware/securityHeaders';
 import { correlationId } from './middleware/correlationId';
@@ -222,28 +223,10 @@ app.use(responseTime);
 app.use(versionRouting);
 app.use(apiVersion);
 // Configure Express body parser with per-route JSON payload size limits.
-// Upload endpoints (player registration, milestone evidence) accept larger payloads.
-// Auth endpoints are restricted to prevent DoS via large JWT bodies.
-// All other routes use the global JSON_PAYLOAD_LIMIT (default 1 MB).
-const uploadJsonParser = express.json({ limit: config.bodyLimit.upload });
-const authJsonParser = express.json({ limit: config.bodyLimit.auth });
-const defaultJsonParser = express.json({ limit: config.bodyLimit.json });
-
-const UPLOAD_PATHS = new Set([
-  '/api/players/register', '/api/v1/players/register',
-  '/api/v2/players/register',
-  '/api/validators/milestone', '/api/v1/validators/milestone',
-  '/api/v2/validators/milestone',
-]);
-const AUTH_PATHS = new Set(['/auth/token', '/auth/challenge', '/auth/refresh', '/auth/logout']);
-
-app.use((req, res, next) => {
-  if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
-    if (UPLOAD_PATHS.has(req.path)) return uploadJsonParser(req, res, next);
-    if (AUTH_PATHS.has(req.path)) return authJsonParser(req, res, next);
-  }
-  defaultJsonParser(req, res, next);
-});
+// Upload endpoints (player registration, milestone evidence) attach jsonBody('upload')
+// directly on their routes; auth endpoints attach jsonBody('auth') on the auth router.
+// All other routes use the global JSON_PAYLOAD_LIMIT fallback (default 1 MB).
+app.use(jsonBody('default'));
 app.use(requestLogger);
 // Collect per-route request counts, latency, and error counts for /metrics.
 app.use(metricsMiddleware);

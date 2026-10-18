@@ -816,8 +816,8 @@ Operator topics (secrets rotation, data privacy, Postgres migration, deployment)
 | `ADMIN_WALLETS`                   | Comma-separated list of admin Stellar addresses                                                                       |
 | `ADMIN_THRESHOLD`                 | Number of admin signatures required for high-value operations (default: `1`)                                          |
 | `STELLAR_HEALTH_CHECK`            | Set to `false` to disable Stellar RPC check in `/health` (default: `true`)                                            |
-| `JSON_PAYLOAD_LIMIT`              | Maximum JSON request body size (default: `1mb`); requests exceeding limit return HTTP 413                             |
-| `UPLOAD_PAYLOAD_LIMIT`            | Max JSON body for upload endpoints — player registration and milestone evidence (default: `10mb`)                     |
+| `JSON_PAYLOAD_LIMIT`              | Maximum JSON request body size for standard endpoints via `jsonBody('default')` (default: `1mb`; `/auth/*` routes use `1kb` via `jsonBody('auth')`); requests exceeding limit return HTTP 413 |
+| `UPLOAD_PAYLOAD_LIMIT`            | Max JSON body for upload endpoints — player registration and milestone evidence via `jsonBody('upload')` (default: `10mb`) |
 | `RATE_LIMIT_ENABLED`              | Set to `false` to disable rate limiting (default: `true`)                                                             |
 | `RATE_LIMIT_WINDOW_MS`            | Rate limit window in milliseconds (default: `60000`)                                                                  |
 | `RATE_LIMIT_MAX`                  | Max requests per window (default: `60`)                                                                               |

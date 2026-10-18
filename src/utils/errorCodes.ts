@@ -46,10 +46,10 @@ export const ErrorCode = {
 
   /**
    * HTTP 413 — Request body size exceeds the configured server limit.
-   * Limits are configurable via env vars (see src/config.ts `bodyLimit`):
-   *   - JSON_PAYLOAD_LIMIT (default 1 MB) — general JSON request bodies
-   *   - UPLOAD_PAYLOAD_LIMIT (default 10 MB) — file upload routes
-   *   - AUTH_PAYLOAD_LIMIT (default 100 KB) — auth routes
+   * Limits are configurable via env vars and attached per-route via `jsonBody()` (`src/middleware/bodyParser.ts`):
+   *   - JSON_PAYLOAD_LIMIT (default 1 MB) — general JSON request bodies (`jsonBody('default')`)
+   *   - UPLOAD_PAYLOAD_LIMIT (default 10 MB) — player registration & milestone evidence routes (`jsonBody('upload')`)
+   *   - config.bodyLimit.auth (default 1 KB) — `/auth/*` routes (`jsonBody('auth')`)
    * Client should: Reduce payload size; split into multiple requests if needed.
    * See BACKEND_API_DOCS.md and docs/API_DOCUMENTATION.md for details.
    */

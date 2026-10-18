@@ -24,6 +24,7 @@ import { acceptTrialOffer, rejectTrialOffer, rejectOfferSchema } from "../contro
 import { getPlayerTokenHolders, buyPlayerToken, buyTokenSchema } from "../controllers/playerTokenController";
 
 import { validateBody, validateQuery } from "../middleware/validate";
+import { jsonBody } from "../middleware/bodyParser";
 import { requireRole, optionalAuth, requireApiKeyScope } from "../middleware/auth";
 import { requireOwner } from "../middleware/requireOwner";
 import { methodNotAllowed } from "../middleware/methodNotAllowed";
@@ -61,11 +62,12 @@ router.route("/")
  */
 router.route("/register")
   .post(
+    jsonBody("upload"),
     requireRole("player"),
     validateBody(registerSchema, { context: "player_registration" }),
     registerPlayer,
   )
-  .all(methodNotAllowed(['POST']));
+  .all(jsonBody("upload"), methodNotAllowed(['POST']));
 
 /**
  * GET /api/players/:playerId

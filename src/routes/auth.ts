@@ -5,11 +5,14 @@ import { requireAuth } from '../middleware/auth';
 import { rateLimit } from '../middleware/rateLimit';
 import { methodNotAllowed } from '../middleware/methodNotAllowed';
 import { validateBody } from '../middleware/validate';
+import { jsonBody } from '../middleware/bodyParser';
 import config from '../config';
 import { extractAccount } from '../services/sep10';
 import { verifyJwt } from '../utils/jwt';
 
 const router = Router();
+
+router.use(jsonBody('auth'));
 
 router.use((_req, res, next) => {
   res.set({ 'Cache-Control': 'no-store', Pragma: 'no-cache' });

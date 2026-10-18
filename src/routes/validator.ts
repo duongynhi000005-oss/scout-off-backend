@@ -11,6 +11,7 @@ import {
 import { requireRole } from '../middleware/auth';
 import { requireWalletOwner } from '../middleware/requireOwner';
 import { validateBody, validateQuery } from '../middleware/validate';
+import { jsonBody } from '../middleware/bodyParser';
 import { rateLimit, playerRateLimit } from '../middleware/rateLimit';
 import { methodNotAllowed } from '../middleware/methodNotAllowed';
 
@@ -49,13 +50,14 @@ const milestonePlayerRateLimit = playerRateLimit();
  */
 router.route('/milestone')
   .post(
+    jsonBody('upload'),
     milestoneRateLimit,
     requireRole('validator'),
     validateBody(milestoneSchema),
     milestonePlayerRateLimit,
     submitMilestoneEvidence,
   )
-  .all(methodNotAllowed(['POST']));
+  .all(jsonBody('upload'), methodNotAllowed(['POST']));
 
 /**
  * GET /api/validators/milestones/pending

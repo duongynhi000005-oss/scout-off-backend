@@ -121,4 +121,46 @@ describe('JSON Payload Size Limit', () => {
     expect(typeof res.body.error).toBe('string');
     expect(res.body).toHaveProperty('success', false);
   });
+
+  describe('trailing-slash, versioned, and case-variant paths (#1532)', () => {
+    it.each([
+      '/auth/token/',
+      '/AUTH/TOKEN',
+      '/auth/refresh/',
+      '/AUTH/REFRESH/',
+      '/auth/logout/',
+      '/AUTH/LOGOUT',
+    ])('rejects a 2 KB body on %s (auth limit 1 KB)', async (path) => {
+      const res = await request(app)
+        .post(path)
+        .set('Content-Type', 'application/json')
+        .send({ data: 'x'.repeat(2 * 1024) });
+
+      expect(res.status).toBe(413);
+      expect(res.body.error).toContain('Payload too large');
+    });
+
+    it.each([
+      '/api/players/register/',
+      '/api/v1/players/register',
+      '/api/v1/players/register/',
+      '/api/v2/players/register/',
+      '/API/PLAYERS/REGISTER',
+      '/api/validators/milestone/',
+      '/api/v1/validators/milestone',
+      '/api/v1/validators/milestone/',
+      '/api/v2/validators/milestone/',
+      '/API/VALIDATORS/MILESTONE',
+    ])('accepts a 5 MB body on %s (upload limit 10 MB)', async (path) => {
+      const res = await request(app)
+        .post(path)
+        .send({
+          wallet: 'G'.repeat(56),
+          data: 'x'.repeat(5 * 1024 * 1024),
+        });
+
+      expect(res.status).not.toBe(413);
+    });
+  });
 });
+

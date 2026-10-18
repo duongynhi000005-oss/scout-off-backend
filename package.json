@@ -2,6 +2,7 @@
   "name": "scout-off-backend",
   "version": "1.0.0",
   "description": "Backend API for ScoutOff — decentralized football scouting platform on Stellar",
+  "license": "Apache-2.0",
   "main": "dist/index.js",
   "engines": {
     "node": ">=22.0.0 <25.0.0",

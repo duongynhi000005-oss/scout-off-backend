@@ -946,7 +946,7 @@ Everything else (subscriptions, trial offer logging, fractionalized sponsorship)
 
 ## License
 
-MIT
+Licensed under the [Apache License, Version 2.0](LICENSE) (`Apache-2.0`).
 
 ## Support
 

@@ -9,6 +9,9 @@ members = [
     "player_token",
 ]
 
+[workspace.package]
+license = "Apache-2.0"
+
 [workspace.dependencies]
 # testutils is NOT listed here: it's unsupported on the wasm target (see
 # soroban-sdk's own compile_error!), so it must only be enabled by the

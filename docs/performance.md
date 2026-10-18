@@ -327,3 +327,17 @@ A baseline run has not yet been conducted.  To record one:
 ```
 
 *Environment* *(fill in when recording)*: Node vX.Y.Z, SQLite on SSD, single-process, no Redis.
+
+---
+
+## Prometheus `/metrics` Security (`#1523`)
+
+`GET /metrics` exposes operational counters, latency histograms, indexer ledger lag, and webhook dead-letter queue depths. By default it is open for in-cluster scraping, and can be hardened with either or both of the following environment variables:
+
+| Variable | Default | Behaviour |
+|---|---|---|
+| `METRICS_AUTH_TOKEN` | *(unset)* | Requires `Authorization: Bearer <METRICS_AUTH_TOKEN>` (constant-time comparison via `crypto.timingSafeEqual`). Missing or mismatched tokens return `401 Unauthorized`. |
+| `METRICS_ALLOWED_CIDRS` | *(unset)* | Comma-separated IPv4 addresses or CIDR blocks (e.g. `10.0.0.0/8,172.16.0.0/12`) checked against the raw socket address (`req.socket.remoteAddress`, ignoring `X-Forwarded-For`). Non-matching IPs return `403 Forbidden`. |
+
+When `NODE_ENV=production` and `METRICS_ENABLED` is not `false`, the server logs a startup warning if neither `METRICS_AUTH_TOKEN` nor `METRICS_ALLOWED_CIDRS` is configured.
+

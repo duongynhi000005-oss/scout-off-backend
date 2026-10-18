@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+import net from 'net';
 import { Request, Response, NextFunction } from 'express';
 import { ipReputationCounters, resetIpReputationCounters } from '../services/ipReputation';
 
@@ -625,3 +627,125 @@ export function createMetricsHandler(
     }));
   };
 }
+
+// ─── /metrics endpoint access control (#1523) ─────────────────────────────────
+
+function ipToNumber(ip: string): number {
+  return ip.split('.').reduce((acc, oct) => (acc << 8) | parseInt(oct, 10), 0) >>> 0;
+}
+
+function normalizeIpv4MappedIpv6(ip: string): string {
+  const prefix = '::ffff:';
+  if (ip.toLowerCase().startsWith(prefix)) {
+    const candidate = ip.slice(prefix.length);
+    if (net.isIP(candidate) === 4) return candidate;
+  }
+  return ip;
+}
+
+function validateCidrEntry(entry: string): string | null {
+  if (entry.includes('/')) {
+    const [network, prefixStr, ...rest] = entry.split('/');
+    if (rest.length > 0) return null;
+    if (net.isIP(network ?? '') !== 4) return null;
+    if (!/^\d+$/.test(prefixStr ?? '')) return null;
+    const prefix = parseInt(prefixStr ?? '', 10);
+    if (isNaN(prefix) || prefix < 0 || prefix > 32) return null;
+    return entry;
+  }
+  if (net.isIP(entry) === 4) return entry;
+  return null;
+}
+
+function ipInCidr(ip: string, cidr: string): boolean {
+  if (net.isIP(ip) !== 4) return false;
+  if (!cidr.includes('/')) return ip === cidr;
+  const [network, prefixStr] = cidr.split('/');
+  if (net.isIP(network ?? '') !== 4) return false;
+  const prefix = parseInt(prefixStr ?? '', 10);
+  const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
+  return (ipToNumber(ip) & mask) === (ipToNumber(network ?? '') & mask);
+}
+
+function constantTimeTokenEquals(provided: string, expected: string): boolean {
+  const providedBuf = Buffer.from(provided, 'utf8');
+  const expectedBuf = Buffer.from(expected, 'utf8');
+  if (providedBuf.length !== expectedBuf.length) {
+    crypto.timingSafeEqual(expectedBuf, expectedBuf);
+    return false;
+  }
+  return crypto.timingSafeEqual(providedBuf, expectedBuf);
+}
+
+function getLoadedConfigMetrics(): { authToken?: string; allowedCidrs?: string[] } | undefined {
+  try {
+    const configPath = require.resolve('../config');
+    const cached = require.cache[configPath];
+    return cached?.exports?.default?.metrics;
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveMetricsAuthToken(): string {
+  const envVal = (process.env.METRICS_AUTH_TOKEN ?? '').trim();
+  if (envVal) return envVal;
+  return (getLoadedConfigMetrics()?.authToken ?? '').trim();
+}
+
+function resolveMetricsAllowedCidrs(): string[] {
+  const envRaw = (process.env.METRICS_ALLOWED_CIDRS ?? '').trim();
+  if (envRaw) {
+    return envRaw
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && validateCidrEntry(s) !== null);
+  }
+  return getLoadedConfigMetrics()?.allowedCidrs ?? [];
+}
+
+/**
+ * Express middleware that protects `GET /metrics` with an optional IPv4/CIDR
+ * network allowlist (`METRICS_ALLOWED_CIDRS`) and/or a constant-time Bearer
+ * token check (`METRICS_AUTH_TOKEN`).
+ *
+ * - When neither is configured, all requests pass through (backwards compatible).
+ * - When `METRICS_ALLOWED_CIDRS` is set, the raw socket remote address
+ *   (`req.socket.remoteAddress`, NOT `X-Forwarded-For`) is normalised for
+ *   IPv4-mapped IPv6 (`::ffff:x.x.x.x`) and checked against the configured
+ *   CIDRs; non-matching callers receive HTTP 403 with no metric payload.
+ * - When `METRICS_AUTH_TOKEN` is set, `Authorization: Bearer <token>` is
+ *   verified using `crypto.timingSafeEqual`; missing or invalid credentials
+ *   receive HTTP 401 with no metric payload.
+ * - When both are set, both checks must pass (CIDR check runs first).
+ */
+export function metricsGuard(req: Request, res: Response, next: NextFunction): void {
+  const allowedCidrs = resolveMetricsAllowedCidrs();
+  const authToken = resolveMetricsAuthToken();
+
+  if (allowedCidrs.length > 0) {
+    const rawIp = req.socket?.remoteAddress ?? '';
+    const clientIp = normalizeIpv4MappedIpv6(rawIp);
+    const allowed = net.isIP(clientIp) === 4 && allowedCidrs.some((cidr) => ipInCidr(clientIp, cidr));
+    if (!allowed) {
+      res.status(403).json({ success: false, error: 'Forbidden' });
+      return;
+    }
+  }
+
+  if (authToken) {
+    const authHeader = req.headers.authorization;
+    if (typeof authHeader !== 'string' || !/^Bearer\s+/i.test(authHeader)) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+    const providedToken = authHeader.replace(/^Bearer\s+/i, '');
+    if (!providedToken || !constantTimeTokenEquals(providedToken, authToken)) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+  }
+
+  next();
+}
+

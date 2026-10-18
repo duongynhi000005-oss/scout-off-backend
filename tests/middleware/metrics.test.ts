@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { metricsMiddleware, metricsStore, errorCountsStore, getMetrics, getErrorMetrics, isMetricsEnabled } from '../../src/middleware/metrics';
+import { metricsMiddleware, metricsGuard, metricsStore, errorCountsStore, getMetrics, getErrorMetrics, isMetricsEnabled } from '../../src/middleware/metrics';
 
 function makeReqRes(path = '/test', method = 'GET', statusCode = 200) {
   const listeners: Record<string, () => void> = {};
@@ -204,3 +204,117 @@ describe('metricsMiddleware — unmatched route bucketing', () => {
     expect(Object.keys(metricsStore)).toHaveLength(3);
   });
 });
+
+// ─── metricsGuard (#1523) ─────────────────────────────────────────────────────
+
+describe('metricsGuard (#1523)', () => {
+  function makeGuardReqRes(opts: {
+    authHeader?: string;
+    remoteAddress?: string;
+    forwardedFor?: string;
+  } = {}) {
+    const req = {
+      headers: {
+        ...(opts.authHeader !== undefined ? { authorization: opts.authHeader } : {}),
+        ...(opts.forwardedFor !== undefined ? { 'x-forwarded-for': opts.forwardedFor } : {}),
+      },
+      socket: { remoteAddress: opts.remoteAddress ?? '127.0.0.1' },
+    } as unknown as Request;
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const res = { status, json } as unknown as Response;
+    const next = jest.fn() as NextFunction;
+    return { req, res, next, status, json };
+  }
+
+  afterEach(() => {
+    delete process.env.METRICS_AUTH_TOKEN;
+    delete process.env.METRICS_ALLOWED_CIDRS;
+  });
+
+  it('passes through when neither METRICS_AUTH_TOKEN nor METRICS_ALLOWED_CIDRS is set', () => {
+    const { req, res, next, status } = makeGuardReqRes();
+    metricsGuard(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(status).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 when METRICS_AUTH_TOKEN is set and Authorization header is missing', () => {
+    process.env.METRICS_AUTH_TOKEN = 'super-secret-scrape-token';
+    const { req, res, next, status, json } = makeGuardReqRes();
+    metricsGuard(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(401);
+    expect(json).toHaveBeenCalledWith({ success: false, error: 'Unauthorized' });
+  });
+
+  it('returns 401 when METRICS_AUTH_TOKEN is set and token does not match', () => {
+    process.env.METRICS_AUTH_TOKEN = 'super-secret-scrape-token';
+    const { req, res, next, status, json } = makeGuardReqRes({
+      authHeader: 'Bearer wrong-token',
+    });
+    metricsGuard(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(401);
+    expect(json).toHaveBeenCalledWith({ success: false, error: 'Unauthorized' });
+  });
+
+  it('allows request when METRICS_AUTH_TOKEN matches Bearer token', () => {
+    process.env.METRICS_AUTH_TOKEN = 'super-secret-scrape-token';
+    const { req, res, next, status } = makeGuardReqRes({
+      authHeader: 'Bearer super-secret-scrape-token',
+    });
+    metricsGuard(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(status).not.toHaveBeenCalled();
+  });
+
+  it('allows request when client socket IP matches METRICS_ALLOWED_CIDRS (including ::ffff: IPv4-mapped IPv6)', () => {
+    process.env.METRICS_ALLOWED_CIDRS = '10.0.0.0/8,172.16.0.0/12';
+    const { req, res, next, status } = makeGuardReqRes({
+      remoteAddress: '::ffff:10.42.1.9',
+    });
+    metricsGuard(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(status).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when client socket IP is outside METRICS_ALLOWED_CIDRS and ignores spoofed X-Forwarded-For', () => {
+    process.env.METRICS_ALLOWED_CIDRS = '10.0.0.0/8';
+    const { req, res, next, status, json } = makeGuardReqRes({
+      remoteAddress: '203.0.113.50',
+      forwardedFor: '10.0.0.5',
+    });
+    metricsGuard(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(403);
+    expect(json).toHaveBeenCalledWith({ success: false, error: 'Forbidden' });
+  });
+
+  it('enforces both CIDR and Bearer token when both METRICS_ALLOWED_CIDRS and METRICS_AUTH_TOKEN are set', () => {
+    process.env.METRICS_ALLOWED_CIDRS = '10.0.0.0/8';
+    process.env.METRICS_AUTH_TOKEN = 'scrape-secret';
+
+    // Allowed IP but missing token -> 401
+    const missingToken = makeGuardReqRes({ remoteAddress: '10.1.2.3' });
+    metricsGuard(missingToken.req, missingToken.res, missingToken.next);
+    expect(missingToken.status).toHaveBeenCalledWith(401);
+
+    // Disallowed IP with valid token -> 403
+    const badIp = makeGuardReqRes({
+      remoteAddress: '192.168.1.10',
+      authHeader: 'Bearer scrape-secret',
+    });
+    metricsGuard(badIp.req, badIp.res, badIp.next);
+    expect(badIp.status).toHaveBeenCalledWith(403);
+
+    // Both valid -> 200 / next()
+    const ok = makeGuardReqRes({
+      remoteAddress: '10.1.2.3',
+      authHeader: 'Bearer scrape-secret',
+    });
+    metricsGuard(ok.req, ok.res, ok.next);
+    expect(ok.next).toHaveBeenCalledTimes(1);
+  });
+});
+

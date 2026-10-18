@@ -2,6 +2,7 @@ import express from 'express';
 import request from 'supertest';
 import {
   metricsMiddleware,
+  metricsGuard,
   createMetricsHandler,
   resetMetrics,
   PROMETHEUS_CONTENT_TYPE,
@@ -23,14 +24,21 @@ function buildApp() {
   app.get('/missing', (_req, res) => {
     res.status(404).json({ error: 'nope' });
   });
-  app.get('/metrics', createMetricsHandler(() => 7));
+  app.get('/metrics', metricsGuard, createMetricsHandler(() => 7));
   return app;
 }
 
 describe('GET /metrics — Prometheus exposition', () => {
   beforeEach(() => {
     delete process.env.METRICS_ENABLED;
+    delete process.env.METRICS_AUTH_TOKEN;
+    delete process.env.METRICS_ALLOWED_CIDRS;
     resetMetrics();
+  });
+
+  afterEach(() => {
+    delete process.env.METRICS_AUTH_TOKEN;
+    delete process.env.METRICS_ALLOWED_CIDRS;
   });
 
   it('returns 200 with the Prometheus text content-type and requires no auth', async () => {
@@ -98,4 +106,42 @@ describe('GET /metrics — Prometheus exposition', () => {
     expect(body).toMatch(/http_errors_total\{range="4xx"\} 0/);
     expect(body).toMatch(/http_request_duration_ms_count 0/);
   });
+
+  it('rejects missing or wrong bearer token with 401 and no metric content when METRICS_AUTH_TOKEN is set', async () => {
+    process.env.METRICS_AUTH_TOKEN = 'secret-scrape-token';
+    const app = buildApp();
+
+    const missing = await request(app).get('/metrics');
+    expect(missing.status).toBe(401);
+    expect(missing.text).not.toContain('http_requests_total');
+
+    const wrong = await request(app)
+      .get('/metrics')
+      .set('Authorization', 'Bearer wrong-token');
+    expect(wrong.status).toBe(401);
+    expect(wrong.text).not.toContain('http_requests_total');
+
+    const valid = await request(app)
+      .get('/metrics')
+      .set('Authorization', 'Bearer secret-scrape-token');
+    expect(valid.status).toBe(200);
+    expect(valid.text).toContain('# TYPE http_requests_total counter');
+  });
+
+  it('enforces METRICS_ALLOWED_CIDRS against socket remoteAddress and returns 403 for disallowed IPs', async () => {
+    process.env.METRICS_ALLOWED_CIDRS = '127.0.0.0/8';
+    const app = buildApp();
+
+    const allowed = await request(app).get('/metrics');
+    expect(allowed.status).toBe(200);
+    expect(allowed.text).toContain('# TYPE http_requests_total counter');
+
+    process.env.METRICS_ALLOWED_CIDRS = '10.0.0.0/8';
+    const forbidden = await request(app)
+      .get('/metrics')
+      .set('X-Forwarded-For', '10.0.0.5');
+    expect(forbidden.status).toBe(403);
+    expect(forbidden.text).not.toContain('http_requests_total');
+  });
 });
+

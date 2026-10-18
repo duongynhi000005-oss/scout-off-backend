@@ -455,3 +455,61 @@ describe('config validation: JWT_SECRET', () => {
     expect(result.config.jwtSecret).toBe('a'.repeat(64));
   });
 });
+
+// ─── METRICS_ALLOWED_CIDRS / METRICS_AUTH_TOKEN tests (#1523) ─────────────────
+
+describe('config validation: METRICS_ALLOWED_CIDRS & METRICS_AUTH_TOKEN (#1523)', () => {
+  const VALID_WALLET = 'GADMINWALLETAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+  const VALID_SECRET = 'SSEP10SECRET1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+  const validSecret = 'a'.repeat(64);
+
+  afterEach(() => {
+    delete process.env.METRICS_ALLOWED_CIDRS;
+    delete process.env.METRICS_AUTH_TOKEN;
+  });
+
+  it('throws on invalid METRICS_ALLOWED_CIDRS entry at startup', async () => {
+    process.env.METRICS_ALLOWED_CIDRS = '10.0.0.0/8,not-a-cidr';
+    const result = await loadConfigWithEnv({
+      nodeEnv: 'test',
+      jwtSecret: 'jwt-secret',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Invalid METRICS_ALLOWED_CIDRS entry: "not-a-cidr"');
+  });
+
+  it('parses valid METRICS_ALLOWED_CIDRS and METRICS_AUTH_TOKEN into config.metrics', async () => {
+    process.env.METRICS_ALLOWED_CIDRS = '10.0.0.0/8, 172.16.0.1';
+    process.env.METRICS_AUTH_TOKEN = '  my-bearer-token  ';
+    const result = await loadConfigWithEnv({
+      nodeEnv: 'test',
+      jwtSecret: 'jwt-secret',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.config.metrics).toEqual({
+      authToken: 'my-bearer-token',
+      allowedCidrs: ['10.0.0.0/8', '172.16.0.1'],
+    });
+  });
+
+  it('warns in production when /metrics is enabled without METRICS_AUTH_TOKEN or METRICS_ALLOWED_CIDRS', async () => {
+    delete process.env.METRICS_ALLOWED_CIDRS;
+    delete process.env.METRICS_AUTH_TOKEN;
+    const result = await loadConfigWithEnv({
+      nodeEnv: 'production',
+      adminWallet: VALID_WALLET,
+      sep10ServerSecret: VALID_SECRET,
+      apiKeyLookupSecret: validSecret,
+      platformSecretKey: 'SKEY1',
+      jwtSecret: 'a'.repeat(64),
+    });
+
+    expect(result.success).toBe(true);
+    expect(capturedWarnings.join('')).toContain(
+      'WARNING: /metrics is enabled in production without METRICS_AUTH_TOKEN or METRICS_ALLOWED_CIDRS configured',
+    );
+  });
+});
+

@@ -1,3 +1,4 @@
+import net from 'net';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -847,6 +848,66 @@ const config = {
    * See docs/auth.md for details.
    */
   webAuthDomain: process.env.WEB_AUTH_DOMAIN ?? '',
+
+  /**
+   * Optional access control for the Prometheus GET /metrics endpoint (#1523).
+   * - METRICS_AUTH_TOKEN: shared bearer token compared in constant time.
+   * - METRICS_ALLOWED_CIDRS: comma-separated IPv4 addresses or CIDR blocks
+   *   checked against the raw socket address (not X-Forwarded-For).
+   * When both are unset, /metrics remains open for backwards compatibility,
+   * and a startup warning is logged in production.
+   */
+  metrics: (() => {
+    const authToken = (process.env.METRICS_AUTH_TOKEN ?? '').trim();
+    const rawCidrs = (process.env.METRICS_ALLOWED_CIDRS ?? '').trim();
+    const allowedCidrs: string[] = [];
+    if (rawCidrs) {
+      for (const part of rawCidrs.split(',')) {
+        const entry = part.trim();
+        if (!entry) continue;
+        let valid = false;
+        if (entry.includes('/')) {
+          const [network, prefixStr, ...rest] = entry.split('/');
+          const prefix = parseInt(prefixStr ?? '', 10);
+          if (
+            rest.length === 0 &&
+            net.isIP(network ?? '') === 4 &&
+            /^\d+$/.test(prefixStr ?? '') &&
+            !Number.isNaN(prefix) &&
+            prefix >= 0 &&
+            prefix <= 32
+          ) {
+            valid = true;
+          }
+        } else if (net.isIP(entry) === 4) {
+          valid = true;
+        }
+        if (!valid) {
+          throw new Error(
+            `Invalid METRICS_ALLOWED_CIDRS entry: "${entry}". ` +
+            'Each entry must be a valid IPv4 address or CIDR range (e.g. "10.0.0.0/8,172.16.0.0/12").',
+          );
+        }
+        allowedCidrs.push(entry);
+      }
+    }
+    if (
+      nodeEnv === 'production' &&
+      process.env.METRICS_ENABLED !== 'false' &&
+      !authToken &&
+      allowedCidrs.length === 0
+    ) {
+      console.warn(
+        '[config] WARNING: /metrics is enabled in production without METRICS_AUTH_TOKEN or METRICS_ALLOWED_CIDRS configured. ' +
+        'Set METRICS_AUTH_TOKEN or METRICS_ALLOWED_CIDRS (or ensure /metrics is not exposed via your public Ingress) ' +
+        'to protect internal operational telemetry.',
+      );
+    }
+    return {
+      authToken,
+      allowedCidrs,
+    };
+  })(),
 
 };
 

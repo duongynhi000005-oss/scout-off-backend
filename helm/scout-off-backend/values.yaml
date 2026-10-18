@@ -284,6 +284,31 @@ env:
   ADMIN_ACTION_TTL_MS: "3600000"
   # Player cache TTL in ms. Default: 60000 (1 min).
   PLAYER_CACHE_TTL_MS: "60000"
+  # Optional comma-separated IPv4 CIDRs allowed to scrape GET /metrics
+  # (checked against the direct socket address, not X-Forwarded-For).
+  # Example: "10.0.0.0/8,172.16.0.0/12"
+  METRICS_ALLOWED_CIDRS: ""
+
+# -----------------------------------------------------------------------------
+# Metrics / Prometheus scraping
+#
+# By default, GET /metrics is scraped inside the cluster over the pod network.
+# To require a Bearer token on /metrics, add METRICS_AUTH_TOKEN to the
+# Kubernetes Secret (scout-off-secrets) and configure your Prometheus
+# ServiceMonitor with bearerTokenSecret:
+#
+#   endpoints:
+#     - port: http
+#       path: /metrics
+#       bearerTokenSecret:
+#         name: scout-off-secrets
+#         key: METRICS_AUTH_TOKEN
+#
+# Ensure public Ingress rules do not expose /metrics to external callers
+# (or set METRICS_AUTH_TOKEN / METRICS_ALLOWED_CIDRS as defence-in-depth).
+# -----------------------------------------------------------------------------
+metrics:
+  authTokenSecretKey: METRICS_AUTH_TOKEN
 
 # -----------------------------------------------------------------------------
 # Pod annotations

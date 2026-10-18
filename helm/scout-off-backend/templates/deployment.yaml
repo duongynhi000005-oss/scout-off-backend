@@ -205,6 +205,15 @@ spec:
                   name: {{ .Values.secretName }}
                   key: REDIS_URL
                   optional: true
+            # ── Metrics scrape bearer token (#1523) ────────────────────────
+            # Optional. When set in the Secret, GET /metrics requires
+            # Authorization: Bearer <METRICS_AUTH_TOKEN>.
+            - name: METRICS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: METRICS_AUTH_TOKEN
+                  optional: true
           # ── Liveness probe ────────────────────────────────────────────────────
           # Restarts the container if this fails failureThreshold times in a row.
           # /health/liveness is a lightweight check with no external dependencies.

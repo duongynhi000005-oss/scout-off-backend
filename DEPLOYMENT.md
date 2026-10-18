@@ -109,6 +109,8 @@ The sandbox can be started with `scripts/soroban-sandbox` (see [scripts/soroban-
 | `CIRCUIT_BREAKER_RESET_TIMEOUT_MS` | — | Cooldown duration before generic circuit breaker half-opens to test recovery, in ms (default: `30000` = 30 s). See [docs/degradation-contracts.md](docs/degradation-contracts.md#circuit-breakers). |
 | `IPFS_BREAKER_FAILURE_THRESHOLD` | — | Number of consecutive failures before Pinata IPFS circuit breaker opens (default: `5`). See [docs/degradation-contracts.md](docs/degradation-contracts.md#ipfs--pinata-circuit-breaker). |
 | `IPFS_BREAKER_RESET_TIMEOUT_MS` | — | Cooldown duration before Pinata IPFS circuit breaker half-opens to test recovery, in ms (default: `30000` = 30 s). See [docs/degradation-contracts.md](docs/degradation-contracts.md#ipfs--pinata-circuit-breaker). |
+| `METRICS_AUTH_TOKEN` | — | Optional shared Bearer token required on `GET /metrics` (`Authorization: Bearer <token>`, compared in constant time). Unauthenticated requests receive `401 Unauthorized` with no metric output. |
+| `METRICS_ALLOWED_CIDRS` | — | Optional comma-separated **IPv4** addresses/CIDR blocks allowed to reach `GET /metrics` (e.g. `10.0.0.0/8,172.16.0.0/12`), evaluated against the direct socket address (`req.socket.remoteAddress`, not `X-Forwarded-For`). Non-matching callers receive `403 Forbidden`. |
 
 ---
 

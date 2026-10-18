@@ -55,3 +55,21 @@ Two things follow from that:
 4. Run `npm run migration:status` to confirm the forward-migration files are
    listed (rollback `.down.sql` files are excluded), then apply them locally
    to verify they succeed against both drivers before opening a PR.
+
+## Automated Twin Parity Check (`#1520`)
+
+CI enforces that every `db/NNN_description.sql` file has a matching
+`db/NNN_description_postgres.sql` counterpart, and that no orphan
+`_postgres.sql` file exists without its SQLite twin:
+
+- **Test suites**: `tests/db/migrationTwins.test.ts` and
+  `tests/db/migrationPostgresParity.test.ts`
+- **Standalone script**: `node scripts/check-migrations.js`
+- **Exceptions allowlist**: [`db/postgres-twin-exceptions.json`](./postgres-twin-exceptions.json)
+
+If a migration intentionally relies on `convertSqlToPostgres()` while its
+dedicated `_postgres.sql` file is tracked in a follow-up issue, add an entry to
+`db/postgres-twin-exceptions.json` with both `"file"` and a non-empty `"reason"`
+string referencing the tracking issue. Once the `_postgres.sql` twin lands, the
+allowlist entry must be removed (the check fails on stale allowlist entries).
+

@@ -1,0 +1,16 @@
+{
+  "exceptions": [
+    {
+      "file": "027_api_key_rate_limits.sql",
+      "reason": "Tracked in #1561 — uses portable ALTER TABLE / CREATE TABLE syntax translated by convertSqlToPostgres() until the dedicated _postgres.sql twin lands."
+    },
+    {
+      "file": "028_security_event_metrics.sql",
+      "reason": "Tracked in #1562 — uses portable CREATE TABLE / CREATE INDEX syntax translated by convertSqlToPostgres() until the dedicated _postgres.sql twin lands."
+    },
+    {
+      "file": "029_gdpr_data_export.sql",
+      "reason": "Tracked in #1563 — uses portable CREATE TABLE / CREATE INDEX syntax translated by convertSqlToPostgres() until the dedicated _postgres.sql twin lands."
+    }
+  ]
+}

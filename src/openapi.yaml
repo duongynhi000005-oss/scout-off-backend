@@ -2415,7 +2415,7 @@ paths:
       operationId: getPlayerTokenHolders
       description: |-
         Return the list of token holders and their balances for the given player.
-        Gated by the `player_tokens` feature flag — returns 404 when disabled.
+        Gated by the `player_tokens_enabled` feature flag — returns 404 when disabled.
       parameters:
         - name: playerId
           in: path
@@ -2439,7 +2439,7 @@ paths:
       operationId: buyPlayerToken
       description: |-
         Purchase Player Tokens for the given player (stub — no real XLM transfer).
-        Gated by the `player_tokens` feature flag — returns 404 when disabled.
+        Gated by the `player_tokens_enabled` feature flag — returns 404 when disabled.
         The authenticated account is the buyer; the optional buyerWallet field is
         accepted for compatibility only when it matches that account.
       parameters:

@@ -6,7 +6,6 @@ import { logger } from '../utils/logger';
 export const FeatureFlags = {
   SAVED_SEARCHES: 'saved_searches',
   /** Fractionalized player-sponsorship via Player Tokens (scaffold stage). */
-  PLAYER_TOKENS: 'player_tokens',
   PLAYER_TOKENS_ENABLED: 'player_tokens_enabled',
   SAVED_SEARCH_ALERTS_ENABLED: 'saved_search_alerts_enabled',
   GRAPHQL_ENABLED: 'graphql_enabled',

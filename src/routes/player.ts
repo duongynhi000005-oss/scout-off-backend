@@ -323,7 +323,7 @@ router.route("/:playerId/trial-offers/:offerId/reject")
  * GET /api/players/:playerId/tokens
  *
  * Return the list of token holders and their balances for the given player.
- * Gated by the `player_tokens` feature flag — returns 404 when disabled.
+ * Gated by the `player_tokens_enabled` feature flag — returns 404 when disabled.
  *
  * @param playerId {string} - The player's on-chain identifier
  * @response 200 { success: true, data: { playerId, holders: [{ holder, tokens }], meta } }
@@ -338,7 +338,7 @@ router.route("/:playerId/tokens")
  * POST /api/players/:playerId/tokens/buy
  *
  * Purchase Player Tokens for the given player (stub — no real XLM transfer).
- * Gated by the `player_tokens` feature flag — returns 404 when disabled.
+ * Gated by the `player_tokens_enabled` feature flag — returns 404 when disabled.
  * The authenticated account is the buyer; the optional buyerWallet field is
  * accepted for compatibility only when it matches that account.
  *

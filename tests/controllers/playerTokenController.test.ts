@@ -59,13 +59,13 @@ function mockReqRes(
 describe('playerTokenController', () => {
   beforeEach(async () => {
     // Enable the feature flag so the guards pass.
-    setFeatureFlag(FeatureFlags.PLAYER_TOKENS, true, 'test');
+    await setFeatureFlag(FeatureFlags.PLAYER_TOKENS_ENABLED, true, 'test');
     await _stubReset();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     // Disable the flag and flush cache so other test suites are unaffected.
-    setFeatureFlag(FeatureFlags.PLAYER_TOKENS, false, 'test');
+    await setFeatureFlag(FeatureFlags.PLAYER_TOKENS_ENABLED, false, 'test');
     clearFeatureFlagCache();
     jest.restoreAllMocks();
   });
@@ -73,8 +73,9 @@ describe('playerTokenController', () => {
   // ── Feature flag guard ──────────────────────────────────────────────────────
 
   describe('feature flag guard', () => {
-    it('returns 404 when player_tokens flag is disabled', async () => {
-      setFeatureFlag(FeatureFlags.PLAYER_TOKENS, false, 'test');
+    it('returns 404 for buyPlayerToken when player_tokens_enabled flag is disabled (even if player has seeded tokens)', async () => {
+      await _stubSeedTokens('player-1', 100);
+      await setFeatureFlag(FeatureFlags.PLAYER_TOKENS_ENABLED, false, 'test');
       clearFeatureFlagCache();
 
       const { req, res, next, getStatus, getBody } = mockReqRes('player-1', {
@@ -85,6 +86,21 @@ describe('playerTokenController', () => {
 
       expect(getStatus()).toBe(404);
       expect(getBody().success).toBe(false);
+      expect(getBody().error).toMatch(/not enabled/i);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 for getPlayerTokenHolders when player_tokens_enabled flag is disabled (even if player has seeded tokens)', async () => {
+      await _stubSeedTokens('player-1', 100);
+      await setFeatureFlag(FeatureFlags.PLAYER_TOKENS_ENABLED, false, 'test');
+      clearFeatureFlagCache();
+
+      const { req, res, next, getStatus, getBody } = mockReqRes('player-1');
+      await getPlayerTokenHolders(req, res, next);
+
+      expect(getStatus()).toBe(404);
+      expect(getBody().success).toBe(false);
+      expect(getBody().error).toMatch(/not enabled/i);
       expect(next).not.toHaveBeenCalled();
     });
   });

@@ -54,4 +54,25 @@ Two things follow from that:
    the forward-migration file list and only read when rolling back.
 4. Run `npm run migration:status` to confirm the forward-migration files are
    listed (rollback `.down.sql` files are excluded), then apply them locally
-   to verify they succeed against both drivers before opening a PR.
+   with `npm run db:migrate` to verify they succeed against both drivers before
+   opening a PR.
+
+## Running migrations standalone
+
+To apply all pending migrations against the configured database (`DB_DRIVER=sqlite` or `DB_DRIVER=postgres`) without starting the HTTP server:
+
+```sh
+npm run db:migrate
+```
+
+Additional subcommands supported by `scripts/migrate.ts`:
+
+```sh
+# Check whether all migrations are applied (exits 0 if up-to-date, 2 if behind)
+npx ts-node --project tsconfig.scripts.json scripts/migrate.ts status
+
+# Print current and expected schema versions as JSON
+npx ts-node --project tsconfig.scripts.json scripts/migrate.ts version
+```
+
+> **Production container note:** The production runtime image compiles `src/` into `dist/` and omits `scripts/` and `ts-node`. In CI/CD or a Kubernetes pre-deploy `Job`, either run `npm run db:migrate` from a build/migration image that includes `scripts/` and devDependencies, or execute `node -e "require('./dist/db').initDb().then(() => require('./dist/db').closeDb())"` inside the runtime container.

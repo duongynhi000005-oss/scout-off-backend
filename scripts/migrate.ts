@@ -2,10 +2,12 @@
 /**
  * Database migration CLI
  *
- * Usage: node dist/migrate.js <command>
+ * Usage:
+ *   npm run db:migrate
+ *   npx ts-node --project tsconfig.scripts.json scripts/migrate.ts <command>
  *
  * Commands:
- *   up       Run all pending migrations
+ *   up       Run all pending migrations (default when invoked via `npm run db:migrate`)
  *   status   Show migration status (exit 0 if up-to-date, 2 if behind)
  *   version  Print current schema version (file id of last applied migration)
  *

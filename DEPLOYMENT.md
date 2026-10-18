@@ -649,14 +649,23 @@ Quick reference:
 
 ## Database Migrations
 
-The server auto-creates the SQLite database on first start using `db/001_initial.sql`.  
-For schema changes, add a new numbered migration file (`db/002_*.sql`) and apply it before deploying:
+The server auto-creates the SQLite database and applies pending migrations on startup via `initDb()`. To run pending migrations standalone (for example in CI or before flipping traffic) without starting the HTTP server:
 
 ```bash
-sqlite3 scout-off.db < db/002_your_migration.sql
+# Apply all pending migrations against the configured DB_DRIVER (sqlite or postgres)
+npm run db:migrate
+
+# Check migration status (exits 0 when up-to-date)
+npm run migration:status
 ```
 
-Always back up the database file before running migrations in production.
+> **Production container / Kubernetes Job note:** `tsconfig.json` compiles `src/` to `dist/`, so the production runtime Docker stage does not include `scripts/` or `ts-node`. To run migrations as a one-off container command or Kubernetes pre-deploy `Job` using the runtime image, invoke:
+> ```bash
+> node -e "require('./dist/db').initDb().then(() => require('./dist/db').closeDb())"
+> ```
+> Alternatively, run `npm run db:migrate` from the CI runner or builder image before rolling out the deployment.
+
+Always back up the database before running migrations in production.
 
 ## Database Backups
 

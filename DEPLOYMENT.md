@@ -81,6 +81,9 @@ The sandbox can be started with `scripts/soroban-sandbox` (see [scripts/soroban-
 | `SSE_MAX_CONNECTIONS` | — | Max concurrent SSE connections; `0` = unlimited (default: `0`) |
 | `SSE_RETRY_MS` | — | Base reconnect delay for SSE clients in retry: frame, in ms (default: `5000`) |
 | `PORT` | — | API port (default: `4000`) |
+| `HTTP_KEEP_ALIVE_TIMEOUT_MS` | — | Node HTTP `server.keepAliveTimeout` in ms (default: `65000`). Keep greater than upstream load-balancer idle timeout (e.g. AWS ALB 60s) to avoid intermittent 502s on socket reuse. |
+| `HTTP_HEADERS_TIMEOUT_MS` | — | Node HTTP `server.headersTimeout` in ms (default: `66000`). Must be strictly greater than `HTTP_KEEP_ALIVE_TIMEOUT_MS`. |
+| `HTTP_REQUEST_TIMEOUT_MS` | — | Node HTTP `server.requestTimeout` in ms for receiving incoming requests (default: `120000`; does not cut off open SSE response streams). |
 | `LOG_LEVEL` | — | `debug` / `info` / `warn` / `error` |
 | `LOG_SKIP_PATHS` | — | Comma-separated paths requestLogger silences (default: health + metrics probes) |
 | `LOG_SAMPLE_RATE` | — | Float 0–1 sample rate for non-skipped paths (default: `1` = log all) |

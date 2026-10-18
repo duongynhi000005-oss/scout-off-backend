@@ -258,6 +258,10 @@ env:
   SSE_MAX_CONNECTIONS: "0"
   # Request timeout in ms
   REQUEST_TIMEOUT_MS: "30000"
+  # Node HTTP server socket/header/request timeouts in ms (#1593)
+  HTTP_KEEP_ALIVE_TIMEOUT_MS: "65000"
+  HTTP_HEADERS_TIMEOUT_MS: "66000"
+  HTTP_REQUEST_TIMEOUT_MS: "120000"
   # Rate limiting
   RATE_LIMIT_ENABLED: "true"
   RATE_LIMIT_WINDOW_MS: "60000"

@@ -103,6 +103,10 @@ async function startServer() {
     })();
   });
 
+  server.keepAliveTimeout = config.http.keepAliveTimeoutMs;
+  server.headersTimeout = config.http.headersTimeoutMs;
+  server.requestTimeout = config.http.requestTimeoutMs;
+
   // ── Job tracking ──────────────────────────────────────────────────────────
   // Wraps each background job so shutdown can observe whether one is running
   // and wait for it to complete before closing the DB.

@@ -848,6 +848,41 @@ const config = {
    */
   webAuthDomain: process.env.WEB_AUTH_DOMAIN ?? '',
 
+  // ── Node HTTP server socket/header/request timeouts (#1593) ─────────────
+  // Default keepAliveTimeoutMs (65000) and headersTimeoutMs (66000) are chosen
+  // to exceed common load-balancer idle timeouts (e.g. AWS ALB 60s) and avoid
+  // race-condition 502s when an LB reuses an idle keep-alive socket.
+  http: (() => {
+    const keepAliveTimeoutMs = parseNumericEnv(
+      'HTTP_KEEP_ALIVE_TIMEOUT_MS',
+      process.env.HTTP_KEEP_ALIVE_TIMEOUT_MS,
+      65000,
+      { min: 1, integer: true },
+    );
+    const headersTimeoutMs = parseNumericEnv(
+      'HTTP_HEADERS_TIMEOUT_MS',
+      process.env.HTTP_HEADERS_TIMEOUT_MS,
+      66000,
+      { min: 1, integer: true },
+    );
+    const requestTimeoutMs = parseNumericEnv(
+      'HTTP_REQUEST_TIMEOUT_MS',
+      process.env.HTTP_REQUEST_TIMEOUT_MS,
+      120000,
+      { min: 0, integer: true },
+    );
+    if (headersTimeoutMs <= keepAliveTimeoutMs) {
+      throw new Error(
+        `Invalid HTTP server timeouts: HTTP_HEADERS_TIMEOUT_MS (${headersTimeoutMs}) must be greater than HTTP_KEEP_ALIVE_TIMEOUT_MS (${keepAliveTimeoutMs})`,
+      );
+    }
+    return {
+      keepAliveTimeoutMs,
+      headersTimeoutMs,
+      requestTimeoutMs,
+    };
+  })(),
+
 };
 
 export default config;

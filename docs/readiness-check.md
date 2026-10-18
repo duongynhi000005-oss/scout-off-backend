@@ -45,7 +45,7 @@ The readiness check reports the indexer service status based on:
 
 - **Purpose**: Per-probe timeout for database writability heartbeat probe (`probeDbWritable()`)
 - **Default**: `2000` (2 seconds)
-- **Unit**: Milliseconds (integer >= 1)
+- **Unit**: Milliseconds (integer, `100`–`30000`; validated at startup via `config.readiness.timeouts.dbMs`)
 - **Effect**: If the heartbeat row write into `indexer_state` does not resolve within this timeout (e.g. disk contention, lock starvation in SQLite, or connection pool exhaustion in PostgreSQL), the DB check marks `status: 'unavailable'` and readiness returns `503`. Running probes concurrently with individual timeouts prevents a locked DB from blocking or hanging the entire readiness check.
 - **Recommended**: `1000-3000` ms (keep lower than your orchestrator's HTTP probe timeout).
 
@@ -53,7 +53,7 @@ The readiness check reports the indexer service status based on:
 
 - **Purpose**: Per-probe timeout for Pinata / IPFS API connectivity probe (`checkHealth()`)
 - **Default**: `5000` (5 seconds)
-- **Unit**: Milliseconds (integer >= 1)
+- **Unit**: Milliseconds (integer, `100`–`30000`; validated at startup via `config.readiness.timeouts.ipfsMs`)
 - **Effect**: Sets the maximum time allowed for Pinata's `/data/testAuthentication` call to complete. If Pinata is degraded or slow, the IPFS probe reports `status: 'unavailable'` and records the latency (`ms`) rather than hanging the overall readiness check.
 - **Recommended**: `3000-10000` ms.
 
@@ -61,7 +61,7 @@ The readiness check reports the indexer service status based on:
 
 - **Purpose**: Per-probe timeout for Soroban / Stellar RPC connectivity probe (`stellarHealth()`)
 - **Default**: `5000` (5 seconds)
-- **Unit**: Milliseconds (integer >= 1)
+- **Unit**: Milliseconds (integer, `100`–`30000`; validated at startup via `config.readiness.timeouts.stellarMs`)
 - **Effect**: Sets the maximum time allowed for the Stellar Horizon/RPC ledger check to respond. If RPC times out, the probe reports `status: 'unavailable'`. Note that if the Stellar circuit breaker is currently open, this check short-circuits immediately with `unavailable` without making a network call. If `config.stellarHealthCheckEnabled` is false, it reports `disabled`.
 - **Recommended**: `3000-10000` ms.
 

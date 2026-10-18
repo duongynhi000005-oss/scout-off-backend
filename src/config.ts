@@ -715,13 +715,20 @@ const config = {
   // ── Readiness / health check timeouts ──────────────────────────────────
   // Per-component timeout for readiness probes (#1317)
   readinessDb: {
-    timeoutMs: parseNumericEnv('READINESS_DB_TIMEOUT_MS', process.env.READINESS_DB_TIMEOUT_MS, 2000, { min: 1, integer: true }),
+    timeoutMs: parseNumericEnv('READINESS_DB_TIMEOUT_MS', process.env.READINESS_DB_TIMEOUT_MS, 2000, { min: 100, max: 30000, integer: true }),
   },
   readinessIpfs: {
-    timeoutMs: parseNumericEnv('READINESS_IPFS_TIMEOUT_MS', process.env.READINESS_IPFS_TIMEOUT_MS, 5000, { min: 1, integer: true }),
+    timeoutMs: parseNumericEnv('READINESS_IPFS_TIMEOUT_MS', process.env.READINESS_IPFS_TIMEOUT_MS, 5000, { min: 100, max: 30000, integer: true }),
   },
   readinessStellar: {
-    timeoutMs: parseNumericEnv('READINESS_STELLAR_TIMEOUT_MS', process.env.READINESS_STELLAR_TIMEOUT_MS, 5000, { min: 1, integer: true }),
+    timeoutMs: parseNumericEnv('READINESS_STELLAR_TIMEOUT_MS', process.env.READINESS_STELLAR_TIMEOUT_MS, 5000, { min: 100, max: 30000, integer: true }),
+  },
+  readiness: {
+    timeouts: {
+      dbMs: parseNumericEnv('READINESS_DB_TIMEOUT_MS', process.env.READINESS_DB_TIMEOUT_MS, 2000, { min: 100, max: 30000, integer: true }),
+      ipfsMs: parseNumericEnv('READINESS_IPFS_TIMEOUT_MS', process.env.READINESS_IPFS_TIMEOUT_MS, 5000, { min: 100, max: 30000, integer: true }),
+      stellarMs: parseNumericEnv('READINESS_STELLAR_TIMEOUT_MS', process.env.READINESS_STELLAR_TIMEOUT_MS, 5000, { min: 100, max: 30000, integer: true }),
+    },
   },
 
   // ── Server-Sent Events (SSE) ──────────────────────────────────────────

@@ -276,43 +276,18 @@ app.get('/health', async (_req, res) => {
   });
 });
 
-/**
- * Per-probe timeout configuration (ms).
- * Each probe has its own independent timeout so a slow dependency only blocks
- * its own result — not all three.
- *
- * Configurable via:
- *   READINESS_DB_TIMEOUT_MS      (default: 2 000)
- *   READINESS_IPFS_TIMEOUT_MS    (default: 5 000)
- *   READINESS_STELLAR_TIMEOUT_MS (default: 5 000)
- */
-function getReadinessTimeouts(): { db: number; ipfs: number; stellar: number } {
-  const parseTimeout = (name: string, fallback: number): number => {
-    const raw = process.env[name];
-    if (raw === undefined) return fallback;
-    const parsed = parseInt(raw, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-  };
-
-  return {
-    db: parseTimeout('READINESS_DB_TIMEOUT_MS', 2_000),
-    ipfs: parseTimeout('READINESS_IPFS_TIMEOUT_MS', 5_000),
-    stellar: parseTimeout('READINESS_STELLAR_TIMEOUT_MS', 5_000),
-  };
-}
-
 export interface ProbeResult {
   status: 'ok' | 'unavailable' | 'disabled';
   ms: number;
 }
 
 async function checkReadiness(): Promise<Record<string, ProbeResult>> {
-  const timeouts = getReadinessTimeouts();
+  const timeouts = config.readiness.timeouts;
 
   const [dbResult, ipfsResult, stellarResult, indexerResult] = await Promise.all([
     (async (): Promise<ProbeResult> => {
       const t0 = Date.now();
-      const outcome = await probeDbWritable(timeouts.db);
+      const outcome = await probeDbWritable(timeouts.dbMs);
       return { status: outcome === 'ok' ? 'ok' : 'unavailable', ms: Date.now() - t0 };
     })(),
 
@@ -323,7 +298,7 @@ async function checkReadiness(): Promise<Record<string, ProbeResult>> {
         async () => {
           await checkHealth();
         },
-        timeouts.ipfs,
+        timeouts.ipfsMs,
       );
       return { status: outcome === 'ok' ? 'ok' : 'unavailable', ms: Date.now() - t0 };
     })(),
@@ -342,7 +317,7 @@ async function checkReadiness(): Promise<Record<string, ProbeResult>> {
           const ok = await stellarHealth();
           if (!ok) throw new Error('stellar unhealthy');
         },
-        timeouts.stellar,
+        timeouts.stellarMs,
       );
       return { status: outcome === 'ok' ? 'ok' : 'unavailable', ms: Date.now() - t0 };
     })(),

@@ -305,21 +305,17 @@ describe('GET /health', () => {
 });
 
 describe('readiness DB probe timeout and latency', () => {
-  const originalTimeout = process.env.READINESS_DB_TIMEOUT_MS;
+  const originalTimeout = config.readiness.timeouts.dbMs;
 
   afterEach(() => {
-    if (originalTimeout === undefined) {
-      delete process.env.READINESS_DB_TIMEOUT_MS;
-    } else {
-      process.env.READINESS_DB_TIMEOUT_MS = originalTimeout;
-    }
+    config.readiness.timeouts.dbMs = originalTimeout;
     mockGetDriver.mockReset();
     mockGetDriver.mockImplementation(getRealDriver);
     mockCheckHealth.mockReset();
   });
 
   it('uses the configured timeout and reports the DB probe duration', async () => {
-    process.env.READINESS_DB_TIMEOUT_MS = '30';
+    config.readiness.timeouts.dbMs = 30;
     mockCheckHealth.mockResolvedValue(undefined);
     mockGetDriver.mockImplementation(() =>
       driverWith({ run: () => new Promise(() => {}) }),
@@ -334,8 +330,7 @@ describe('readiness DB probe timeout and latency', () => {
     expect(Date.now() - startedAt).toBeLessThan(1_000);
   });
 
-  it('falls back to the default timeout for an invalid setting', async () => {
-    process.env.READINESS_DB_TIMEOUT_MS = 'not-a-number';
+  it('uses the default timeout when not overridden', async () => {
     mockCheckHealth.mockResolvedValue(undefined);
     mockGetDriver.mockImplementation(() =>
       driverWith({

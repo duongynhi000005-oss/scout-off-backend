@@ -361,6 +361,9 @@ describe('parseNumericEnv validation', () => {
     'EVIDENCE_MAX_BYTES',
     'ADMIN_ACTION_TTL_MS',
     'COMPRESSION_THRESHOLD',
+    'READINESS_DB_TIMEOUT_MS',
+    'READINESS_IPFS_TIMEOUT_MS',
+    'READINESS_STELLAR_TIMEOUT_MS',
   ];
 
   beforeEach(() => {
@@ -648,5 +651,39 @@ describe('parseNumericEnv validation', () => {
     const cfg = await loadConfig();
     expect(cfg.compressionThresholdBytes).toBe(512);
     delete process.env.COMPRESSION_THRESHOLD_BYTES;
+  });
+
+  // ── READINESS_*_TIMEOUT_MS ───────────────────────────────────────────────────
+
+  it('populates config.readiness.timeouts from env', async () => {
+    process.env.READINESS_DB_TIMEOUT_MS = '1500';
+    process.env.READINESS_IPFS_TIMEOUT_MS = '4000';
+    process.env.READINESS_STELLAR_TIMEOUT_MS = '6000';
+    const cfg = await loadConfig();
+    expect(cfg.readiness.timeouts).toEqual({
+      dbMs: 1500,
+      ipfsMs: 4000,
+      stellarMs: 6000,
+    });
+  });
+
+  it('READINESS_DB_TIMEOUT_MS: non-numeric string throws naming READINESS_DB_TIMEOUT_MS', async () => {
+    process.env.READINESS_DB_TIMEOUT_MS = 'not-a-number';
+    await expectThrowsContaining('READINESS_DB_TIMEOUT_MS');
+  });
+
+  it('READINESS_DB_TIMEOUT_MS: 50 is below min (100) and throws', async () => {
+    process.env.READINESS_DB_TIMEOUT_MS = '50';
+    await expectThrowsContaining('READINESS_DB_TIMEOUT_MS');
+  });
+
+  it('READINESS_IPFS_TIMEOUT_MS: 40000 exceeds max (30000) and throws', async () => {
+    process.env.READINESS_IPFS_TIMEOUT_MS = '40000';
+    await expectThrowsContaining('READINESS_IPFS_TIMEOUT_MS');
+  });
+
+  it('READINESS_STELLAR_TIMEOUT_MS: 50 is below min (100) and throws', async () => {
+    process.env.READINESS_STELLAR_TIMEOUT_MS = '50';
+    await expectThrowsContaining('READINESS_STELLAR_TIMEOUT_MS');
   });
 });

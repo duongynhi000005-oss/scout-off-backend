@@ -36,9 +36,6 @@ function getCache() {
   return require('./cache');
 }
 
-// Track approved milestones for webhook dispatch
-const approvedMilestones: Array<{ type: string; payload: unknown }> = [];
-
 /** Current indexer lag in ledgers (latestChainLedger - lastIndexedLedger). Reset after each poll. */
 export let indexerLedgerLag = 0;
 

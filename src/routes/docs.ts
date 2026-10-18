@@ -6,11 +6,41 @@
  * GET /api/docs/yaml   → OpenAPI 3.0 spec as YAML (raw)
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import fs from 'fs';
 import path from 'path';
+import config from '../config';
+import { requireRole } from '../middleware/auth';
+import { ErrorCode } from '../utils/errorCodes';
 
 const router = Router();
+
+const adminRoleMiddleware = requireRole('admin');
+
+/**
+ * Guard middleware enforcing `config.apiDocs.mode`:
+ * - `'disabled'`: returns 404 Not Found for every docs route and asset
+ * - `'admin'`: requires an authenticated admin JWT (`requireRole('admin')`)
+ * - `'public'`: allows unauthenticated access
+ */
+function apiDocsGuard(req: Request, res: Response, next: NextFunction): void {
+  const mode = config.apiDocs?.mode ?? 'public';
+  if (mode === 'disabled') {
+    res.status(404).json({
+      success: false,
+      error: 'API documentation is disabled',
+      code: ErrorCode.NOT_FOUND,
+    });
+    return;
+  }
+  if (mode === 'admin') {
+    adminRoleMiddleware(req, res, next);
+    return;
+  }
+  next();
+}
+
+router.use(apiDocsGuard);
 
 // Resolve the spec files relative to this source file
 const SPEC_YAML_PATH = path.join(__dirname, '..', 'openapi.yaml');
@@ -29,21 +59,152 @@ function parseYamlSpec(yamlText: string): Record<string, unknown> {
   }
 }
 
-/** Lazily parsed spec — parsed once on first request then cached. */
-let cachedSpec: Record<string, unknown> | null = null;
+/** Serialize a spec object back to YAML. */
+function dumpYamlSpec(spec: Record<string, unknown>): string {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const yaml = require('js-yaml') as typeof import('js-yaml');
+  return yaml.dump(spec, { noRefs: true, lineWidth: 120 });
+}
 
-function loadSpec(): Record<string, unknown> {
-  if (cachedSpec) return cachedSpec;
+const ADMIN_PATH_REGEX = /^(?:\/api(?:\/v\d+)?)?\/admin(?:\/|$)/i;
+
+export function isAdminSpecPath(pathKey: string): boolean {
+  return ADMIN_PATH_REGEX.test(pathKey);
+}
+
+function collectComponentRefs(node: unknown, refs: Set<string>): void {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const item of node) collectComponentRefs(item, refs);
+    return;
+  }
+  const record = node as Record<string, unknown>;
+  if (typeof record.$ref === 'string' && record.$ref.startsWith('#/components/')) {
+    refs.add(record.$ref);
+  }
+  for (const val of Object.values(record)) {
+    collectComponentRefs(val, refs);
+  }
+}
+
+/**
+ * Returns a deep-cloned OpenAPI spec with `/admin/*` paths, the `'admin'` tag,
+ * and admin-only components removed.
+ */
+export function filterAdminSpec(spec: Record<string, unknown>): Record<string, unknown> {
+  const cloned = JSON.parse(JSON.stringify(spec)) as Record<string, unknown>;
+  const adminRefs = new Set<string>();
+
+  if (cloned.paths && typeof cloned.paths === 'object') {
+    const pathsObj = cloned.paths as Record<string, unknown>;
+    for (const [pathKey, pathItem] of Object.entries(pathsObj)) {
+      if (isAdminSpecPath(pathKey)) {
+        collectComponentRefs(pathItem, adminRefs);
+        delete pathsObj[pathKey];
+      }
+    }
+  }
+
+  if (Array.isArray(cloned.tags)) {
+    cloned.tags = cloned.tags.filter((tag) => {
+      if (tag && typeof tag === 'object' && 'name' in tag) {
+        return String((tag as { name: unknown }).name).toLowerCase() !== 'admin';
+      }
+      return true;
+    });
+  }
+
+  if (cloned.components && typeof cloned.components === 'object') {
+    const remainingRefs = new Set<string>();
+    collectComponentRefs(cloned.paths, remainingRefs);
+
+    const componentsObj = cloned.components as Record<string, Record<string, unknown>>;
+    for (const [section, entries] of Object.entries(componentsObj)) {
+      if (!entries || typeof entries !== 'object') continue;
+      for (const [compName, compVal] of Object.entries(entries)) {
+        const refKey = `#/components/${section}/${compName}`;
+        const isExplicitAdminComp =
+          /^admin/i.test(compName) ||
+          Boolean(
+            compVal &&
+              typeof compVal === 'object' &&
+              (compVal as Record<string, unknown>)['x-admin-only'] === true,
+          );
+        if (!remainingRefs.has(refKey) && (adminRefs.has(refKey) || isExplicitAdminComp)) {
+          delete entries[compName];
+        }
+      }
+    }
+  }
+
+  return cloned;
+}
+
+/** Lazily parsed and filtered specs — computed once and cached. */
+let cachedFullSpec: Record<string, unknown> | null = null;
+let cachedFilteredSpec: Record<string, unknown> | null = null;
+let cachedFullYaml: string | null = null;
+let cachedFilteredYaml: string | null = null;
+
+export function resetDocsSpecCache(): void {
+  cachedFullSpec = null;
+  cachedFilteredSpec = null;
+  cachedFullYaml = null;
+  cachedFilteredYaml = null;
+}
+
+function loadBaseSpec(): Record<string, unknown> {
+  if (cachedFullSpec) return cachedFullSpec;
   if (fs.existsSync(SPEC_YAML_PATH)) {
     const raw = fs.readFileSync(SPEC_YAML_PATH, 'utf8');
-    cachedSpec = parseYamlSpec(raw);
+    cachedFullYaml = raw;
+    cachedFullSpec = parseYamlSpec(raw);
   } else if (fs.existsSync(SPEC_JSON_PATH)) {
-    cachedSpec = JSON.parse(fs.readFileSync(SPEC_JSON_PATH, 'utf8')) as Record<string, unknown>;
+    cachedFullSpec = JSON.parse(fs.readFileSync(SPEC_JSON_PATH, 'utf8')) as Record<string, unknown>;
   } else {
     throw new Error('OpenAPI spec not found. Expected openapi.yaml or openapi.json in the project root.');
   }
-  return cachedSpec;
+  return cachedFullSpec;
 }
+
+function shouldHideAdmin(): boolean {
+  const mode = config.apiDocs?.mode ?? 'public';
+  return mode === 'public' && Boolean(config.apiDocs?.hideAdmin);
+}
+
+function loadSpec(): Record<string, unknown> {
+  const base = loadBaseSpec();
+  if (!shouldHideAdmin()) {
+    return base;
+  }
+  if (!cachedFilteredSpec) {
+    cachedFilteredSpec = filterAdminSpec(base);
+  }
+  return cachedFilteredSpec;
+}
+
+function loadYaml(): string {
+  if (!shouldHideAdmin()) {
+    if (!cachedFullYaml) {
+      cachedFullYaml = fs.readFileSync(SPEC_YAML_PATH, 'utf8');
+    }
+    return cachedFullYaml;
+  }
+  if (!cachedFilteredYaml) {
+    const filtered = loadSpec();
+    cachedFilteredYaml = dumpYamlSpec(filtered);
+  }
+  return cachedFilteredYaml;
+}
+
+/**
+ * Content-Security-Policy for the Swagger UI page.
+ * `src/middleware/securityHeaders.ts` sets `default-src 'none'` by default for
+ * JSON API endpoints; the `/ui` HTML page needs to load its own stylesheet,
+ * script bundle, inline initializer, data-URI icons, and OpenAPI spec URL.
+ */
+export const SWAGGER_UI_CSP =
+  "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'";
 
 /**
  * GET /api/docs
@@ -70,7 +231,7 @@ router.get('/', (_req: Request, res: Response) => {
  */
 router.get('/yaml', (_req: Request, res: Response) => {
   try {
-    const raw = fs.readFileSync(SPEC_YAML_PATH, 'utf8');
+    const raw = loadYaml();
     res.type('text/yaml').send(raw);
   } catch (err) {
     res.status(500).json({ success: false, error: 'Failed to load OpenAPI spec YAML' });
@@ -127,6 +288,7 @@ router.get('/ui', (req: Request, res: Response) => {
 </body>
 </html>`;
 
+  res.setHeader('Content-Security-Policy', SWAGGER_UI_CSP);
   res.type('html').send(html);
 });
 

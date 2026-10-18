@@ -284,6 +284,13 @@ env:
   ADMIN_ACTION_TTL_MS: "3600000"
   # Player cache TTL in ms. Default: 60000 (1 min).
   PLAYER_CACHE_TTL_MS: "60000"
+  # OpenAPI / Swagger UI access mode: public | admin | disabled (#1552).
+  # Production default is "admin" (requires admin JWT). Set to "public" to expose
+  # docs publicly or "disabled" to return 404.
+  API_DOCS_MODE: "admin"
+  # When API_DOCS_MODE=public, set "true" to strip /admin/* paths from the served spec.
+  API_DOCS_HIDE_ADMIN: "false"
+
 
 # -----------------------------------------------------------------------------
 # Pod annotations

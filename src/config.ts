@@ -848,7 +848,43 @@ const config = {
    */
   webAuthDomain: process.env.WEB_AUTH_DOMAIN ?? '',
 
+  // ── OpenAPI / Swagger UI documentation (#1552) ────────────────────────
+  /**
+   * Controls whether and how `/api/docs`, `/api/v1/docs`, and `/api/v2/docs`
+   * are served:
+   * - `'public'`: serve OpenAPI spec and Swagger UI without authentication
+   *   (default outside production).
+   * - `'admin'`: require `requireRole('admin')` to access any docs endpoint
+   *   (default in production).
+   * - `'disabled'`: return 404 for all docs endpoints.
+   *
+   * When `hideAdmin` is `true` in `'public'` mode, `/admin/*` paths and
+   * admin-only tags/components are stripped from the served JSON and YAML specs.
+   */
+  apiDocs: {
+    mode: parseApiDocsMode(process.env.API_DOCS_MODE, nodeEnv),
+    hideAdmin: process.env.API_DOCS_HIDE_ADMIN === 'true',
+  },
+
 };
+
+export type ApiDocsMode = 'public' | 'admin' | 'disabled';
+
+export function parseApiDocsMode(
+  raw: string | undefined,
+  env: string = process.env.NODE_ENV ?? 'development',
+): ApiDocsMode {
+  const trimmed = (raw ?? '').trim().toLowerCase();
+  if (!trimmed) {
+    return env === 'production' ? 'admin' : 'public';
+  }
+  if (trimmed === 'public' || trimmed === 'admin' || trimmed === 'disabled') {
+    return trimmed;
+  }
+  throw new Error(
+    `Invalid API_DOCS_MODE="${raw}". Must be one of: public, admin, disabled`,
+  );
+}
 
 export default config;
 

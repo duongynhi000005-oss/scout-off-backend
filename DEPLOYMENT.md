@@ -1,5 +1,66 @@
 # Deployment Notes — ScoutOff Backend
 
+Production and staging deployment guide for the ScoutOff Backend API, covering environment setup, Soroban contract configuration, Kubernetes/Helm, database migrations, backups, monitoring, and rollback procedures.
+
+## Table of Contents
+
+- [⚠️ SQLite + Multi-Replica Deployments](#-sqlite--multi-replica-deployments)
+  - [Fix](#fix)
+- [Environment Setup](#environment-setup)
+  - [Network Configuration](#network-configuration)
+- [Platform Signing Key (`PLATFORM_SECRET_KEY`)](#platform-signing-key-platform_secret_key)
+  - [Generating the key](#generating-the-key)
+  - [Funding requirements](#funding-requirements)
+  - [Shared across instances](#shared-across-instances)
+  - [Kubernetes](#kubernetes)
+  - [Rotation](#rotation)
+- [Multi-Contract Architecture](#multi-contract-architecture)
+  - [Deploying the contracts](#deploying-the-contracts)
+  - [Initializing each contract](#initializing-each-contract)
+  - [Registering authorized updaters](#registering-authorized-updaters)
+  - [Pausing and unpausing](#pausing-and-unpausing)
+  - [Backward compatibility](#backward-compatibility)
+- [Kubernetes / Helm Deployment](#kubernetes--helm-deployment)
+  - [Default topology: single-replica SQLite](#default-topology-single-replica-sqlite)
+  - [Prerequisites](#prerequisites)
+  - [1. Create the Kubernetes Secret](#1-create-the-kubernetes-secret)
+  - [JWT secret rotation runbook (zero-downtime dual-key)](#jwt-secret-rotation-runbook-zero-downtime-dual-key)
+  - [2. Install the chart](#2-install-the-chart)
+  - [3. Upgrade](#3-upgrade)
+  - [4. Override values](#4-override-values)
+  - [5. Lint the chart](#5-lint-the-chart)
+  - [6. Render templates locally (dry-run)](#6-render-templates-locally-dry-run)
+  - [7. Uninstall](#7-uninstall)
+- [Cache Configuration](#cache-configuration)
+  - [CACHE_NAMESPACE — preventing key collisions on shared Redis (#672)](#cache_namespace--preventing-key-collisions-on-shared-redis-672)
+  - [API Key Expiry — API_KEY_DEFAULT_TTL_DAYS (#674)](#api-key-expiry--api_key_default_ttl_days-674)
+- [Build & Start](#build--start)
+- [Contract ID Configuration](#contract-id-configuration)
+  - [The Fallback Chain](#the-fallback-chain)
+  - [When to Set Each Per-Contract ID](#when-to-set-each-per-contract-id)
+  - [Known Limitation: Indexer Single-Contract Assumption](#known-limitation-indexer-single-contract-assumption)
+  - [Configuration Examples](#configuration-examples)
+- [Multi-Sig Admin Operations](#multi-sig-admin-operations)
+- [Database Migrations](#database-migrations)
+- [Database Backups](#database-backups)
+  - [Environment variables](#environment-variables)
+  - [One-off backup](#one-off-backup)
+  - [Restore-verification drills](#restore-verification-drills)
+  - [Scheduling via cron](#scheduling-via-cron)
+  - [Backup retention](#backup-retention)
+- [Rate Limiting](#rate-limiting)
+- [Reindexing](#reindexing)
+- [CI/CD Expectations](#cicd-expectations)
+- [Health & Monitoring](#health--monitoring)
+  - [Incident Diagnosis & Downstream Dependencies (`GET /health/dependencies`)](#incident-diagnosis--downstream-dependencies-get-healthdependencies)
+  - [Docker Compose Healthcheck](#docker-compose-healthcheck)
+- [Smoke Tests After Deployment](#smoke-tests-after-deployment)
+- [Release Process](#release-process)
+- [Blue-Green Deployment Topology](#blue-green-deployment-topology)
+  - [Topology](#topology)
+  - [Nginx Configuration Requirement](#nginx-configuration-requirement)
+  - [Manual Override & Rollback](#manual-override--rollback)
+
 ## ⚠️ SQLite + Multi-Replica Deployments
 
 **If you deploy with more than one replica (pod/instance), you MUST switch to PostgreSQL.** The default database driver is SQLite — a single-writer, file-local database. Running multiple replicas with SQLite will cause:
@@ -646,6 +707,7 @@ Quick reference:
    - `POST /api/admin/contract/unpause`
    - Other high-value admin endpoints
 6. **Single-signer immediate execution**: When `ADMIN_THRESHOLD=1`, operations execute immediately without multi-sig approval
+7. **Single-signer attempts when `ADMIN_THRESHOLD > 1`**: Single-admin attempts return `403` with `"High-value operation requires multiple admin signatures"`
 
 ## Database Migrations
 
@@ -863,19 +925,6 @@ healthcheck:
 ```
 
 Docker marks the container `(healthy)` once the first probe succeeds. The `start_period` of 15 seconds gives the Express server time to initialize before probes are counted as failures. The `--spider` flag tells `wget` to perform a HEAD-only request without downloading the response body, keeping healthcheck logs quiet. Run `docker compose ps` to confirm the container status shows `(healthy)` after startup.
-
-## Multi-Sig Admin Operations
-
-High-value admin operations (withdraw fees, pause/unpause contract) require M-of-N multi-signature approval:
-
-1. **Configure admin wallets**: Set `ADMIN_WALLETS` to a comma-separated list of Stellar addresses (e.g., `ADMIN_WALLETS=GABC123...,GDEF456...`)
-2. **Set threshold**: Configure `ADMIN_THRESHOLD` to the minimum number of admin signatures required (e.g., `ADMIN_THRESHOLD=2`)
-3. **Backward compatibility**: If `ADMIN_WALLETS` is not set, the system falls back to `ADMIN_WALLET` with threshold 1
-4. **Operations affected**:
-   - `POST /api/admin/fees` (withdraw fees)
-   - `POST /api/admin/contract/pause`
-   - `POST /api/admin/contract/unpause`
-5. **Single-signer attempts**: When threshold > 1, single-admin attempts return 403 with "High-value operation requires multiple admin signatures"
 
 ## Smoke Tests After Deployment
 

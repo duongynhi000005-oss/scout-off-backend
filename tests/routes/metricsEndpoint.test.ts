@@ -98,4 +98,24 @@ describe('GET /metrics — Prometheus exposition', () => {
     expect(body).toMatch(/http_errors_total\{range="4xx"\} 0/);
     expect(body).toMatch(/http_request_duration_ms_count 0/);
   });
+
+  it('documents every exported # HELP metric in docs/metrics.md (#1605)', () => {
+    const fs = require('fs') as typeof import('fs');
+    const path = require('path') as typeof import('path');
+    const metricsSource = fs.readFileSync(
+      path.join(__dirname, '../../src/middleware/metrics.ts'),
+      'utf8',
+    );
+    const docsContent = fs.readFileSync(
+      path.join(__dirname, '../../docs/metrics.md'),
+      'utf8',
+    );
+    const helpMatches = [...metricsSource.matchAll(/# HELP ([a-z0-9_]+)/g)].map(
+      (m) => m[1],
+    );
+    expect(helpMatches.length).toBeGreaterThanOrEqual(20);
+    for (const metricName of helpMatches) {
+      expect(docsContent).toContain(`\`${metricName}\``);
+    }
+  });
 });

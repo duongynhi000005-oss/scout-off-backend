@@ -43,6 +43,7 @@ not a directory listing.
 | Doc | Audience | Description |
 | --- | -------- | ----------- |
 | [runbook.md](runbook.md) | Operator | Incident → action runbook: indexer lag, wrong tiers, webhook failures, RPC/IPFS outages, DB slowness, reindex/replay, dead-letter drain, cache flush, circuit breaker, pause/unpause |
+| [metrics.md](metrics.md) | Operator | Prometheus `/metrics` reference: all exported metric families, types, labels, descriptions, and suggested alert rules |
 | [performance.md](performance.md) | Contributor | Latency budgets for key endpoints and how to run the load-test suites |
 | [soroban-sandbox-e2e.md](soroban-sandbox-e2e.md) | Contributor | Local + CI Soroban sandbox that deploys all five contracts and runs live backend E2E (#1117) |
 

@@ -271,6 +271,15 @@ Once a stream is open, authorization is re-checked continuously (issue #1019):
 See [docs/auth.md § SSE live revocation & wallet blocklisting](auth.md#sse-live-revocation--wallet-blocklisting-1019)
 for the full model.
 
+## Cross-instance delivery (Redis Pub/Sub)
+
+When `REDIS_URL` is configured (`#1338`, `#1339`), `EventBroadcaster` uses Redis Pub/Sub on channel `sse:events` to fan out events across multiple backend instances:
+
+- Calling `broadcast()` delivers the event to local SSE subscribers and publishes it to `sse:events` tagged with a per-process origin instance ID (`{redis|local}:{random8chars}`).
+- Every backend instance subscribes to `sse:events` and rebroadcasts received events to its local SSE connections, skipping messages whose origin matches its own instance ID to prevent duplicate delivery.
+- The ledger indexer (`src/services/indexer.ts`) also publishes newly indexed on-chain events (`player_registered`, `milestone_submitted`, `milestone_approved`, `scout_subscribed`, `contact_unlocked`, `trial_offer_logged`) only after a new row is inserted (`INSERT OR IGNORE`).
+- When Redis is not configured, `EventBroadcaster` falls back transparently to single-process in-memory broadcasting.
+
 ## Related configuration
 
 | Variable                    | Default | Description                                             |

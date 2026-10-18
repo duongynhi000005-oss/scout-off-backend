@@ -6,6 +6,8 @@ import {
   resetMetrics,
   PROMETHEUS_CONTENT_TYPE,
   LATENCY_BUCKETS_MS,
+  incUnhandledRejections,
+  getUnhandledRejectionsTotal,
 } from '../../src/middleware/metrics';
 
 // Build a minimal app that mounts only the metrics middleware and the /metrics
@@ -98,4 +100,25 @@ describe('GET /metrics — Prometheus exposition', () => {
     expect(body).toMatch(/http_errors_total\{range="4xx"\} 0/);
     expect(body).toMatch(/http_request_duration_ms_count 0/);
   });
+
+  it('exports scout_off_unhandled_rejections_total as a Prometheus counter and resets it via resetMetrics()', async () => {
+    const app = buildApp();
+    expect(getUnhandledRejectionsTotal()).toBe(0);
+    let body = (await request(app).get('/metrics')).text;
+    expect(body).toContain('# TYPE scout_off_unhandled_rejections_total counter');
+    expect(body).toContain('scout_off_unhandled_rejections_total 0');
+
+    expect(incUnhandledRejections()).toBe(1);
+    expect(incUnhandledRejections()).toBe(2);
+    expect(getUnhandledRejectionsTotal()).toBe(2);
+
+    body = (await request(app).get('/metrics')).text;
+    expect(body).toContain('scout_off_unhandled_rejections_total 2');
+
+    resetMetrics();
+    expect(getUnhandledRejectionsTotal()).toBe(0);
+    body = (await request(app).get('/metrics')).text;
+    expect(body).toContain('scout_off_unhandled_rejections_total 0');
+  });
 });
+

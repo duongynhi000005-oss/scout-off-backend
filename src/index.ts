@@ -22,7 +22,7 @@ import {
 import { closeRedisClients } from "./services/redis";
 import { runTierDivergenceCheck } from "./services/tierDivergenceJob";
 import { getTierDivergenceTotal } from "./services/tierDivergenceJob";
-import { setTierDivergenceGetter } from "./middleware/metrics";
+import { setTierDivergenceGetter, incUnhandledRejections } from "./middleware/metrics";
 import { drainAllSessions, setAcceptingSseSessions } from "./routes/events";
 import http from "http";
 
@@ -284,13 +284,11 @@ async function startServer() {
   process.on("SIGINT",  () => { shutdown("SIGINT").catch(() => process.exit(1)); });
   // Process-level safety nets (#1391). Registered once, after `shutdown` is
   // defined, so uncaught exceptions can trigger the same graceful shutdown.
-  let unhandledRejectionsTotal = 0;
-
   process.on("unhandledRejection", (reason: unknown) => {
-    unhandledRejectionsTotal += 1;
+    const total = incUnhandledRejections();
     const err = reason instanceof Error ? reason : new Error(String(reason));
     logger.error(
-      `Unhandled promise rejection (scout_off_unhandled_rejections_total=${unhandledRejectionsTotal}):`,
+      `Unhandled promise rejection (scout_off_unhandled_rejections_total=${total}):`,
       err.stack ?? err.message,
     );
     // Do not exit by default; set EXIT_ON_UNHANDLED_REJECTION=true to opt in.

@@ -346,7 +346,23 @@ export function resetMetrics(): void {
   cacheCountsStore.evictions = 0;
   cacheInvalidationStore.total = 0;
   stuckPendingPinsCount = 0;
+  unhandledRejectionsTotal = 0;
   resetIpReputationCounters();
+}
+
+// ─── Unhandled promise rejection counter ─────────────────────────────────────
+
+let unhandledRejectionsTotal = 0;
+
+/** Increment scout_off_unhandled_rejections_total counter and return the new total. */
+export function incUnhandledRejections(): number {
+  unhandledRejectionsTotal += 1;
+  return unhandledRejectionsTotal;
+}
+
+/** Returns the current unhandled promise rejection counter. */
+export function getUnhandledRejectionsTotal(): number {
+  return unhandledRejectionsTotal;
 }
 
 // ─── Cache hit / miss / eviction counters ─────────────────────────────────────
@@ -603,6 +619,11 @@ export function serializeMetrics(extras: SerializeMetricsExtras = {}): string {
   lines.push('# HELP scout_off_tier_divergence_total Total number of player tier divergence events detected since process start');
   lines.push('# TYPE scout_off_tier_divergence_total counter');
   lines.push(`scout_off_tier_divergence_total ${getTierDivergenceForMetrics()}`);
+
+  // Unhandled promise rejection counter.
+  lines.push('# HELP scout_off_unhandled_rejections_total Total number of unhandled promise rejections observed since process start');
+  lines.push('# TYPE scout_off_unhandled_rejections_total counter');
+  lines.push(`scout_off_unhandled_rejections_total ${unhandledRejectionsTotal}`);
 
   return lines.join('\n') + '\n';
 }
